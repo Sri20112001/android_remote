@@ -30,19 +30,61 @@ type WindowsDeviceController struct {
 	cachedLevel int
 	cachedMuted bool
 	initialized bool
+	volChan     chan int
 }
 
 // NewDeviceController returns a new Windows device controller.
 func NewDeviceController() *WindowsDeviceController {
-	return &WindowsDeviceController{
+	c := &WindowsDeviceController{
 		cachedLevel: 50,
 		cachedMuted: false,
+		volChan:     make(chan int, 32),
 	}
+	go c.volumeWorker()
+	return c
 }
 
 func (c *WindowsDeviceController) sendKey(vk int) {
 	procKeybdEvent.Call(uintptr(vk), 0, 0, 0)
 	procKeybdEvent.Call(uintptr(vk), 0, keyeventfKeyUp, 0)
+}
+
+func (c *WindowsDeviceController) volumeWorker() {
+	for lvl := range c.volChan {
+		// Conflate: drain any newer pending volume updates so we only apply the latest
+	drain:
+		for {
+			select {
+			case next := <-c.volChan:
+				lvl = next
+			default:
+				break drain
+			}
+		}
+
+		c.applySystemVolume(lvl)
+	}
+}
+
+func (c *WindowsDeviceController) applySystemVolume(level int) {
+	scalar := float64(level) / 100.0
+	psScript := fmt.Sprintf(`$dev = (New-Object -ComObject MMDeviceEnumerator).GetDefaultAudioEndpoint(0, 1); $dev.AudioEndpointVolume.MasterVolumeLevelScalar = %f`, scalar)
+	cmd := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", psScript)
+	if err := cmd.Run(); err != nil {
+		c.mu.Lock()
+		diff := level - c.cachedLevel
+		c.mu.Unlock()
+		steps := diff / 2
+		if steps > 0 {
+			for i := 0; i < steps; i++ {
+				c.sendKey(vkVolumeUp)
+			}
+		} else if steps < 0 {
+			for i := 0; i < -steps; i++ {
+				c.sendKey(vkVolumeDown)
+			}
+		}
+	}
 }
 
 func (c *WindowsDeviceController) querySystemAudio() (int, bool, error) {
@@ -74,33 +116,26 @@ func (c *WindowsDeviceController) GetVolume() (int, bool, error) {
 }
 
 func (c *WindowsDeviceController) SetVolume(level int) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	if level < 0 {
 		level = 0
 	} else if level > 100 {
 		level = 100
 	}
 
-	scalar := float64(level) / 100.0
-	psScript := fmt.Sprintf(`$dev = (New-Object -ComObject MMDeviceEnumerator).GetDefaultAudioEndpoint(0, 1); $dev.AudioEndpointVolume.MasterVolumeLevelScalar = %f`, scalar)
-	cmd := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", psScript)
-	if err := cmd.Run(); err != nil {
-		// Fallback to keybd_event delta
-		diff := level - c.cachedLevel
-		steps := diff / 2
-		if steps > 0 {
-			for i := 0; i < steps; i++ {
-				c.sendKey(vkVolumeUp)
-			}
-		} else if steps < 0 {
-			for i := 0; i < -steps; i++ {
-				c.sendKey(vkVolumeDown)
-			}
-		}
-	}
+	c.mu.Lock()
 	c.cachedLevel = level
+	c.mu.Unlock()
+
+	select {
+	case c.volChan <- level:
+	default:
+		// Channel full, drop oldest and enqueue latest
+		select {
+		case <-c.volChan:
+		default:
+		}
+		c.volChan <- level
+	}
 	return nil
 }
 

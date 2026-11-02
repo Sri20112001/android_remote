@@ -4,6 +4,7 @@ package monitoring
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"syscall"
 	"time"
@@ -19,6 +20,8 @@ var (
 	procGetSystemPowerStatus = kernel32DLL.NewProc("GetSystemPowerStatus")
 	procGetSystemTimes       = kernel32DLL.NewProc("GetSystemTimes")
 	procGetDiskFreeSpaceExW  = kernel32DLL.NewProc("GetDiskFreeSpaceExW")
+	procGetLogicalDrives     = kernel32DLL.NewProc("GetLogicalDrives")
+	procGetDriveTypeW        = kernel32DLL.NewProc("GetDriveTypeW")
 )
 
 type memoryStatusEx struct {
@@ -138,27 +141,45 @@ func (p *WindowsMetricsProvider) CollectMetrics(ctx context.Context) (SystemMetr
 		}
 	}
 
-	// 4. Primary Disk (C:\)
-	diskPath, _ := syscall.UTF16PtrFromString("C:\\")
-	var freeBytesAvailable, totalBytes, totalFreeBytes uint64
-	r, _, _ = procGetDiskFreeSpaceExW.Call(
-		uintptr(unsafe.Pointer(diskPath)),
-		uintptr(unsafe.Pointer(&freeBytesAvailable)),
-		uintptr(unsafe.Pointer(&totalBytes)),
-		uintptr(unsafe.Pointer(&totalFreeBytes)),
-	)
-	if r != 0 && totalBytes > 0 {
-		used := totalBytes - totalFreeBytes
-		metrics.Disks = []DiskMetrics{
-			{
-				Mount:        "C:",
+	// 4. Storage Volumes (all mounted partitions: C:, D:, etc.)
+	drivesMask, _, _ := procGetLogicalDrives.Call()
+	var disks []DiskMetrics
+	for i := 0; i < 26; i++ {
+		if (drivesMask & (1 << i)) == 0 {
+			continue
+		}
+		driveLetter := rune('A' + i)
+		driveRoot := fmt.Sprintf("%c:\\", driveLetter)
+		diskPath, err := syscall.UTF16PtrFromString(driveRoot)
+		if err != nil {
+			continue
+		}
+
+		driveType, _, _ := procGetDriveTypeW.Call(uintptr(unsafe.Pointer(diskPath)))
+		// 2 = DRIVE_REMOVABLE, 3 = DRIVE_FIXED, 4 = DRIVE_REMOTE, 6 = DRIVE_RAMDISK
+		if driveType != 2 && driveType != 3 && driveType != 4 && driveType != 6 {
+			continue
+		}
+
+		var freeBytesAvailable, totalBytes, totalFreeBytes uint64
+		r, _, _ := procGetDiskFreeSpaceExW.Call(
+			uintptr(unsafe.Pointer(diskPath)),
+			uintptr(unsafe.Pointer(&freeBytesAvailable)),
+			uintptr(unsafe.Pointer(&totalBytes)),
+			uintptr(unsafe.Pointer(&totalFreeBytes)),
+		)
+		if r != 0 && totalBytes > 0 {
+			used := totalBytes - totalFreeBytes
+			disks = append(disks, DiskMetrics{
+				Mount:        fmt.Sprintf("%c:", driveLetter),
 				TotalBytes:   totalBytes,
 				FreeBytes:    totalFreeBytes,
 				UsedBytes:    used,
 				UsagePercent: (float64(used) / float64(totalBytes)) * 100.0,
-			},
+			})
 		}
 	}
+	metrics.Disks = disks
 
 	return metrics, nil
 }

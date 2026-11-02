@@ -14,3 +14,8 @@
 .idea/
 *.swp
 Thumbs.db
+
+# Air live reload
+/tmp/
+build-errors.log
+

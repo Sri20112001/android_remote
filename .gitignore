@@ -15,6 +15,12 @@ agent/windows/configs/config.yaml
 *.out
 coverage.*
 
+# Air live reload and binaries
+tmp/
+*/tmp/
+*.exe
+build-errors.log
+
 # Editor / OS noise
 .vscode/
 .idea/
