@@ -62,6 +62,12 @@ Supported environment variables:
 | `TUF_REMOTE_DATABASE_PATH` | `database.path` |
 | `TUF_REMOTE_LOGGING_LEVEL` | `logging.level` |
 | `TUF_REMOTE_LOGGING_FORMAT` | `logging.format` |
+| `TUF_REMOTE_SECURITY_PAIRING_PIN_TTL` | `security.pairing.pin_ttl` (duration, e.g. `5m`) |
+| `TUF_REMOTE_SECURITY_PAIRING_MAX_ATTEMPTS` | `security.pairing.max_attempts` |
+| `TUF_REMOTE_SECURITY_PAIRING_MAX_ACTIVE_SESSIONS` | `security.pairing.max_active_sessions` |
+| `TUF_REMOTE_SECURITY_PAIRING_TOKEN_GRACE_PERIOD` | `security.pairing.token_grace_period` (duration) |
+| `TUF_REMOTE_SECURITY_RATE_LIMIT_CONFIRM_PER_MINUTE` | `security.rate_limit.confirm_per_minute` |
+| `TUF_REMOTE_SECURITY_ALLOWED_HOSTS` | `security.allowed_hosts` (comma-separated hostnames) |
 
 Notes:
 

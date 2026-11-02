@@ -70,13 +70,18 @@ paths:
       summary: Begin pairing session and generate short-lived PIN (loopback only)
       security: []
       responses:
-        "200":
-          description: Pairing session opened
+        "201":
+          description: Pairing session opened; the PIN is returned exactly once and never persisted
           content:
             application/json:
               schema: { $ref: "#/components/schemas/StartPairingResponse" }
         "403":
-          description: Non-loopback request rejected
+          description: Non-loopback request, cross-origin request or unknown Host header
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: Configured pairing-session capacity is already in use
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
@@ -92,18 +97,28 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/ConfirmPairingRequest" }
       responses:
-        "200":
-          description: Device successfully paired and token issued
+        "201":
+          description: Device paired; the bearer token is returned exactly once and stored only as a hash
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ConfirmPairingResponse" }
         "400":
-          description: Invalid request or invalid PIN
+          description: Malformed JSON body, unknown field, or a missing/too-long device name
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Wrong, expired or burned pairing PIN (one generic answer for all three)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Cross-origin request or unknown Host header
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
         "429":
-          description: Rate limited
+          description: Rate limited; carries a Retry-After header
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
@@ -120,7 +135,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/DevicesResponse" }
         "403":
-          description: Non-loopback request rejected
+          description: Non-loopback request, cross-origin request or unknown Host header
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
@@ -137,17 +152,27 @@ paths:
             schema: { $ref: "#/components/schemas/RevokeDeviceRequest" }
       responses:
         "200":
-          description: Device revoked
+          description: Device revoked; every token it held stops working immediately
           content:
             application/json:
               schema: { $ref: "#/components/schemas/RevokeDeviceResponse" }
+        "400":
+          description: Missing or over-long device_id
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
         "403":
-          description: Non-loopback request rejected
+          description: Non-loopback request, cross-origin request or unknown Host header
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
         "404":
           description: Device not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: Device is already revoked
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
@@ -271,39 +296,64 @@ components:
       type: object
       required: [session_id, pin, expires_at, attempts_remaining]
       properties:
-        session_id: { type: string }
-        pin: { type: string, example: "492815" }
+        session_id:
+          type: string
+          description: Random 128-bit identifier (32 lowercase hex characters); the session lives in memory only
+          example: 7f4a1c9e2b5d8a3f6c0e4b7d1a9f2c5e
+        pin:
+          type: string
+          pattern: '^[0-9]{6}$'
+          minLength: 6
+          maxLength: 6
+          example: "492815"
         expires_at: { type: string, format: date-time }
-        attempts_remaining: { type: integer, example: 5 }
+        attempts_remaining: { type: integer, minimum: 1, example: 5 }
 
     ConfirmPairingRequest:
       type: object
       required: [pin, name]
       properties:
-        pin: { type: string, example: "492815" }
-        name: { type: string, example: "Pixel 8" }
-        model: { type: string, example: "Pixel 8 Pro" }
-        os_version: { type: string, example: "Android 14" }
-        platform: { type: string, example: "android" }
+        pin:
+          type: string
+          pattern: '^[0-9]{6}$'
+          minLength: 6
+          maxLength: 6
+          example: "492815"
+        name: { type: string, maxLength: 64, example: "Pixel 8" }
+        model: { type: string, maxLength: 128, example: "Pixel 8 Pro" }
+        os_version: { type: string, maxLength: 128, example: "Android 14" }
+        platform: { type: string, maxLength: 128, example: "android" }
 
     DeviceInfo:
       type: object
       required: [id, name, platform, paired_at, status]
       properties:
-        id: { type: string }
-        name: { type: string }
-        platform: { type: string }
+        id:
+          type: string
+          description: Random 128-bit identifier (32 lowercase hex characters)
+          example: b3e7d1a95f4c2e8b7d6a0c3f5e1b9a47
+        name: { type: string, maxLength: 64 }
+        platform: { type: string, example: android }
         model: { type: string }
         os_version: { type: string }
         paired_at: { type: string, format: date-time }
-        last_seen_at: { type: string, format: date-time }
+        last_seen_at:
+          type: string
+          format: date-time
+          description: Omitted until the device has authenticated at least once
         status: { type: string, enum: [active, revoked] }
 
     TokenInfo:
       type: object
       properties:
-        token: { type: string }
-        expires_at: { type: string, format: date-time }
+        token:
+          type: string
+          description: Raw bearer token — returned exactly once, 256 bits of CSPRNG entropy prefixed with "tuf_"
+          example: tuf_7Wq2Kx9pLmN4vR8sT1yU6zA3bC5dE0fGhJ4iO8kPnQx
+        expires_at:
+          type: string
+          format: date-time
+          description: Present only when the token has a fixed expiry; device tokens do not by default
 
     ConfirmPairingResponse:
       type: object

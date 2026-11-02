@@ -27,21 +27,37 @@ the contract; they return `404` until their milestone lands.
 | Code | HTTP status | Meaning |
 |---|---|---|
 | `invalid_request` | 400 | malformed or semantically invalid input |
-| `unauthorized` | 401 | missing/invalid credential (milestone 2) |
-| `forbidden` | 403 | credential lacks permission (milestone 2) |
+| `unauthorized` | 401 | missing/invalid credential: absent or unknown bearer token, or a wrong/expired/burned pairing PIN |
+| `forbidden` | 403 | refused before the handler: a non-loopback caller on a PC-only endpoint, or a cross-origin / unknown-`Host` request |
 | `not_found` | 404 | unknown endpoint or resource |
 | `method_not_allowed` | 405 | wrong HTTP method for the path |
-| `conflict` | 409 | request conflicts with current state |
-| `rate_limited` | 429 | request budget exceeded (milestone 2) |
+| `conflict` | 409 | request conflicts with current state (device already revoked, pairing session capacity reached) |
+| `rate_limited` | 429 | request budget exceeded; carries `Retry-After` |
 | `unsupported` | 501 | valid request the platform cannot serve |
 | `unavailable` | 503 | dependency temporarily unavailable |
 | `internal_error` | 500 | unexpected failure (details only in the server log) |
 
 - **Correlation**: every response carries `X-Request-ID`; the same value
   appears in the server log line for the request.
-- **Authentication**: none of the implemented endpoints require it (they are
-  read-only health endpoints). From milestone 2, all non-health endpoints
-  require `Authorization: Bearer <device-token>`.
+- **Authentication** — three levels, decided per endpoint:
+
+  | Level | Endpoints | Rule |
+  |---|---|---|
+  | open | `/health`, `/system/info`, `/system/status`, `/discovery/info` | no credential |
+  | bearer or loopback | every feature endpoint (`/monitoring/*`, `/power/*`, `/audio/*`, `/input/*`, `/clipboard`) | `Authorization: Bearer <device-token>`, **or** a request originating on the PC itself |
+  | bearer only | `/ws`, `/auth/rotate` | a valid token is required even from loopback |
+  | loopback only | `/pairing/start`, `/pairing/devices`, `/pairing/revoke`, `/discovery/qr` | a LAN peer receives `403` |
+
+  Tokens come from `POST /pairing/confirm` (shown once) and are replaced via
+  `POST /auth/rotate`.
+- **Browser requests**: the guard rejects cross-site fetches, mismatched or
+  opaque `Origin` headers, and any `Host` outside the allowlist (IP literals,
+  `localhost`, the machine's hostname, `security.allowed_hosts`) with `403`.
+  Native clients send none of those headers and are unaffected.
+- **Rate limiting**: `POST /pairing/confirm` allows 20 attempts per client IP
+  per minute by default (`security.rate_limit.confirm_per_minute`); over-budget
+  requests answer `429` with `Retry-After`. The PIN itself has its own attempt
+  budget inside each pairing session.
 
 ## Implemented endpoints
 
@@ -120,25 +136,41 @@ system RAM (system telemetry arrives with the monitoring module).
 
 ### `POST /pairing/start`
 
-Opens a pairing window and generates a 6-digit PIN. Accessible only from loopback (`127.0.0.1`), representing the PC user's local consent.
+Opens a pairing window and generates a 6-digit CSPRNG PIN. Accessible only from loopback (`127.0.0.1`), representing the PC user's local consent. The PIN lives in memory only (never written to disk or logs) and expires with `expires_at`.
 
 ```json
 {
-  "session_id": "0194...",
+  "session_id": "7f4a1c9e2b5d8a3f6c0e4b7d1a9f2c5e",
   "pin": "492815",
   "expires_at": "2026-11-01T07:21:54Z",
   "attempts_remaining": 5
 }
 ```
 
+`201` — session opened · `403` — called from another machine, from a browser page, or under an unknown `Host` · `409` — configured session capacity (default 3) is in use.
+
 ### `POST /pairing/confirm`
 
-Device-facing endpoint. The Android client presents the PIN and its metadata to complete pairing and receive a bearer token. Rate-limited per IP.
+Device-facing endpoint. The Android client presents the PIN and its metadata to complete pairing and receive a bearer token. Rate-limited per IP (20/min by default). The PIN is single use and tolerates 5 wrong attempts.
+
+Request body:
+
+```json
+{
+  "pin": "492815",
+  "name": "Pixel 8",
+  "model": "Pixel 8 Pro",
+  "os_version": "Android 14",
+  "platform": "android"
+}
+```
+
+Response:
 
 ```json
 {
   "device": {
-    "id": "dev-0194...",
+    "id": "b3e7d1a95f4c2e8b7d6a0c3f5e1b9a47",
     "name": "Pixel 8",
     "platform": "android",
     "model": "Pixel 8 Pro",
@@ -147,53 +179,60 @@ Device-facing endpoint. The Android client presents the PIN and its metadata to 
     "status": "active"
   },
   "token": {
-    "token": "tuf_sec_...",
-    "expires_at": ""
+    "token": "tuf_7Wq2Kx9pLmN4vR8sT1yU6zA3bC5dE0fGhJ4iO8kPnQx"
   }
 }
 ```
 
+`201` — paired; the token appears **once** and only its SHA-256 hash is stored (`expires_at` is omitted because device tokens do not expire by default) · `400` — malformed/unknown JSON field or an invalid `name` · `401` — wrong, expired or burned PIN (one generic answer for all three) · `403` — cross-origin request or unknown `Host` · `429` — per-IP budget exceeded (`Retry-After` is set).
+
 ### `GET /pairing/devices`
 
-Lists all paired devices. Loopback only.
+Lists all paired devices, newest first, with `last_seen_at` derived from the newest token use (omitted when the device never authenticated). Loopback only.
 
 ```json
 {
   "devices": [
     {
-      "id": "dev-0194...",
+      "id": "b3e7d1a95f4c2e8b7d6a0c3f5e1b9a47",
       "name": "Pixel 8",
       "platform": "android",
       "paired_at": "2026-11-01T07:18:12Z",
+      "last_seen_at": "2026-11-01T07:40:03Z",
       "status": "active"
     }
   ]
 }
 ```
 
+`200` — list (may be empty) · `403` — non-loopback, cross-origin or unknown `Host`.
+
 ### `POST /pairing/revoke`
 
-Revokes a device and all its issued tokens. Loopback only.
+Revokes a device and every token it holds, atomically. Loopback only.
 
 ```json
 {
-  "device_id": "dev-0194...",
+  "device_id": "b3e7d1a95f4c2e8b7d6a0c3f5e1b9a47",
   "status": "revoked"
 }
 ```
 
+`200` — revoked · `400` — missing `device_id` · `403` — non-loopback, cross-origin or unknown `Host` · `404` — unknown device · `409` — already revoked.
+
 ### `POST /auth/rotate`
 
-Rotates an active bearer token. Requires `Authorization: Bearer <token>`. The previous token remains valid during a 30-second grace period.
+Rotates an active bearer token. Requires `Authorization: Bearer <token>` **even from loopback** (the caller must prove possession). The previous token remains valid for the grace period (`security.pairing.token_grace_period`, 30 s by default) so in-flight requests do not fail, then dies.
 
 ```json
 {
   "token": {
-    "token": "tuf_sec_...",
-    "expires_at": ""
+    "token": "tuf_9Hn4Bp2vQ7wE5rT3yU8iO1aS6dF0gJ5kL9zX2cV4bN"
   }
 }
 ```
+
+`200` — new token issued (shown once) · `401` — missing, unknown, expired or revoked token · `403` — cross-origin request or unknown `Host`.
 
 ## Planned endpoints
 

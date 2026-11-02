@@ -74,6 +74,10 @@ The agent binds to **`127.0.0.1` by default** — it is not reachable from
 the network until you deliberately change `server.host`. LAN deployments
 must enable TLS; see [docs/security.md](docs/security.md).
 
+Browser-driven traffic (cross-site fetches, mismatched `Origin`, or a
+`Host` outside `security.allowed_hosts`) is refused with `403` by the
+request guard; the Android app and other native clients are unaffected.
+
 ## Documentation
 
 | Document | Contents |
@@ -93,15 +97,18 @@ must enable TLS; see [docs/security.md](docs/security.md).
 agent/windows/
 ├── cmd/agent/            # entrypoint (flags, signals, wiring only)
 ├── internal/
+│   ├── audit/            # audit-log writer (pairing, revocation, rotation)
 │   ├── bootstrap/        # dependency injection + app lifecycle
 │   ├── config/           # YAML + env configuration, validation
 │   ├── constants/        # app identity, routes, limits, error codes
 │   ├── database/         # SQLite connection + migration runner
 │   │   └── migrations/   # embedded SQL migrations
 │   ├── logging/          # slog logger construction
-│   ├── middleware/       # request ID, logging, recovery
-│   ├── modules/          # feature modules (routes → controller → service)
+│   ├── middleware/       # request ID, logging, recovery, auth, rate limit, guard
+│   ├── modules/          # feature modules (health, pairing, ws, discovery,
+│   │                     #   monitoring, power, audio, input, clipboard)
 │   ├── platform/         # OS-specific code behind interfaces
+│   ├── security/         # token & PIN generation, hashing
 │   ├── server/           # Gin router + net/http lifecycle
 │   └── utils/            # response helpers
 ├── configs/              # example configuration
