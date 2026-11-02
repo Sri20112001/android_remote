@@ -1,0 +1,340 @@
+openapi: 3.1.0
+info:
+  title: TUF Remote — Windows Agent API
+  version: 0.1.0
+  description: |
+    Local REST API of the TUF Remote Windows agent (Milestone 1: core
+    foundation). The agent binds to loopback by default; LAN deployments
+    must enable TLS. Endpoints are added per milestone — see
+    docs/implementation-status.md.
+servers:
+  - url: http://127.0.0.1:8765/api/v1
+    description: Local development (loopback, no TLS)
+  - url: https://<pc>:8765/api/v1
+    description: LAN deployment (TLS required)
+
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Liveness of the agent process
+      security: []
+      responses:
+        "200":
+          description: The agent is alive
+          headers:
+            X-Request-ID:
+              description: Correlation ID of this request
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HealthResponse" }
+
+  /system/info:
+    get:
+      operationId: getSystemInfo
+      summary: Static host identity (hostname, OS version, IPs, uptime)
+      security: []
+      responses:
+        "200":
+          description: Host information; optional fields are omitted when unavailable
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SystemInfoResponse" }
+        "503":
+          description: Platform information could not be collected
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /system/status:
+    get:
+      operationId: getSystemStatus
+      summary: Dynamic status of the agent and its dependencies
+      security: []
+      responses:
+        "200":
+          description: Everything checked is healthy
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SystemStatusResponse" }
+        "503":
+          description: At least one component is degraded; body explains which
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SystemStatusResponse" }
+
+  /pairing/start:
+    post:
+      operationId: startPairing
+      summary: Begin pairing session and generate short-lived PIN (loopback only)
+      security: []
+      responses:
+        "200":
+          description: Pairing session opened
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StartPairingResponse" }
+        "403":
+          description: Non-loopback request rejected
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /pairing/confirm:
+    post:
+      operationId: confirmPairing
+      summary: Confirm pairing with PIN from client (LAN facing, rate limited)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ConfirmPairingRequest" }
+      responses:
+        "200":
+          description: Device successfully paired and token issued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConfirmPairingResponse" }
+        "400":
+          description: Invalid request or invalid PIN
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "429":
+          description: Rate limited
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /pairing/devices:
+    get:
+      operationId: getPairedDevices
+      summary: List all paired devices (loopback only)
+      security: []
+      responses:
+        "200":
+          description: List of paired devices
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DevicesResponse" }
+        "403":
+          description: Non-loopback request rejected
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /pairing/revoke:
+    post:
+      operationId: revokeDevice
+      summary: Revoke access for a paired device (loopback only)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RevokeDeviceRequest" }
+      responses:
+        "200":
+          description: Device revoked
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RevokeDeviceResponse" }
+        "403":
+          description: Non-loopback request rejected
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Device not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /auth/rotate:
+    post:
+      operationId: rotateToken
+      summary: Exchange a valid bearer token for a fresh one
+      security:
+        - deviceToken: []
+      responses:
+        "200":
+          description: New token issued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RotateTokenResponse" }
+        "401":
+          description: Unauthorized or expired token
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+components:
+  securitySchemes:
+    deviceToken:
+      type: http
+      scheme: bearer
+      description: |
+        Device token issued during pairing. Required for protected endpoints.
+
+
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: Stable machine-readable error identifier
+              enum:
+                - invalid_request
+                - unauthorized
+                - forbidden
+                - not_found
+                - method_not_allowed
+                - conflict
+                - rate_limited
+                - unsupported
+                - unavailable
+                - internal_error
+            message:
+              type: string
+              description: Human-readable, safe to display; never contains internals
+
+    HealthResponse:
+      type: object
+      required: [status, app_name, version, agent_uptime_seconds, timestamp]
+      properties:
+        status: { type: string, enum: [ok] }
+        app_name: { type: string, example: TUF Remote }
+        version: { type: string, example: "0.1.0" }
+        agent_uptime_seconds: { type: integer, format: int64, minimum: 0 }
+        timestamp: { type: string, format: date-time }
+
+    SystemInfoResponse:
+      type: object
+      required: [app_name, version, hostname, os, ip_addresses]
+      properties:
+        app_name: { type: string }
+        version: { type: string }
+        hostname: { type: string }
+        os: { type: string, example: windows }
+        os_version:
+          type: string
+          description: Omitted when the platform does not expose it
+          example: Windows 11 (25H2, build 26200)
+        ip_addresses:
+          type: array
+          items: { type: string, format: ipv4 }
+          description: Global unicast IPv4 addresses (no loopback/link-local)
+        uptime_seconds:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Seconds since boot; omitted when unavailable
+
+    SystemStatusResponse:
+      type: object
+      required: [status, app_name, version, agent_uptime_seconds, timestamp, database, process]
+      properties:
+        status: { type: string, enum: [ok, degraded] }
+        app_name: { type: string }
+        version: { type: string }
+        agent_uptime_seconds: { type: integer, format: int64 }
+        timestamp: { type: string, format: date-time }
+        database:
+          type: object
+          required: [status]
+          properties:
+            status: { type: string, enum: [ok, degraded] }
+        process:
+          type: object
+          required: [goroutines, memory]
+          description: Statistics of the agent process, not the host system
+          properties:
+            goroutines: { type: integer, minimum: 1 }
+            memory:
+              type: object
+              required: [heap_alloc_bytes, heap_sys_bytes, sys_bytes, num_gc]
+              properties:
+                heap_alloc_bytes: { type: integer, format: int64 }
+                heap_sys_bytes: { type: integer, format: int64 }
+                sys_bytes: { type: integer, format: int64 }
+                num_gc: { type: integer, format: int64 }
+
+    StartPairingResponse:
+      type: object
+      required: [session_id, pin, expires_at, attempts_remaining]
+      properties:
+        session_id: { type: string }
+        pin: { type: string, example: "492815" }
+        expires_at: { type: string, format: date-time }
+        attempts_remaining: { type: integer, example: 5 }
+
+    ConfirmPairingRequest:
+      type: object
+      required: [pin, name]
+      properties:
+        pin: { type: string, example: "492815" }
+        name: { type: string, example: "Pixel 8" }
+        model: { type: string, example: "Pixel 8 Pro" }
+        os_version: { type: string, example: "Android 14" }
+        platform: { type: string, example: "android" }
+
+    DeviceInfo:
+      type: object
+      required: [id, name, platform, paired_at, status]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        platform: { type: string }
+        model: { type: string }
+        os_version: { type: string }
+        paired_at: { type: string, format: date-time }
+        last_seen_at: { type: string, format: date-time }
+        status: { type: string, enum: [active, revoked] }
+
+    TokenInfo:
+      type: object
+      properties:
+        token: { type: string }
+        expires_at: { type: string, format: date-time }
+
+    ConfirmPairingResponse:
+      type: object
+      required: [device, token]
+      properties:
+        device: { $ref: "#/components/schemas/DeviceInfo" }
+        token: { $ref: "#/components/schemas/TokenInfo" }
+
+    DevicesResponse:
+      type: object
+      required: [devices]
+      properties:
+        devices:
+          type: array
+          items: { $ref: "#/components/schemas/DeviceInfo" }
+
+    RevokeDeviceRequest:
+      type: object
+      required: [device_id]
+      properties:
+        device_id: { type: string }
+
+    RevokeDeviceResponse:
+      type: object
+      required: [device_id, status]
+      properties:
+        device_id: { type: string }
+        status: { type: string, enum: [revoked] }
+
+    RotateTokenResponse:
+      type: object
+      required: [token]
+      properties:
+        token: { $ref: "#/components/schemas/TokenInfo" }

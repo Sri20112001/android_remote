@@ -1,0 +1,16 @@
+# Build output
+/bin/
+
+# Local configuration (copy of the example)
+/configs/config.yaml
+
+# Database files (WAL mode creates -wal and -shm siblings)
+*.db
+*.db-wal
+*.db-shm
+
+# Editor / OS noise
+.vs/
+.idea/
+*.swp
+Thumbs.db
