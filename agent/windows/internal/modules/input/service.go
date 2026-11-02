@@ -92,7 +92,7 @@ func (s *Service) RegisterWS(registry *ws.Registry) {
 		_ = json.Unmarshal(payload, &req)
 		req.Action = MouseActionMove
 		_ = s.InjectMouse(req)
-		return map[string]bool{"success": true}, nil
+		return nil, nil
 	})
 
 	registry.Register("input", "mouse_click", func(ctx context.Context, id middleware.Identity, payload json.RawMessage) (any, error) {
@@ -108,7 +108,7 @@ func (s *Service) RegisterWS(registry *ws.Registry) {
 		_ = json.Unmarshal(payload, &req)
 		req.Action = MouseActionScroll
 		_ = s.InjectMouse(req)
-		return map[string]bool{"success": true}, nil
+		return nil, nil
 	})
 
 	registry.Register("input", "keyboard", func(ctx context.Context, id middleware.Identity, payload json.RawMessage) (any, error) {

@@ -28,7 +28,7 @@ function getTabIconName(name: string, isFocused: boolean): keyof typeof Material
   }
 }
 
-function TabRadioItem({ routeName, isFocused, onPress, onLongPress }: TabItemProps) {
+const TabRadioItem = React.memo(function TabRadioItem({ routeName, isFocused, onPress, onLongPress }: TabItemProps) {
   const scale = useRef(new Animated.Value(isFocused ? 1.25 : 1)).current;
 
   useEffect(() => {
@@ -63,7 +63,7 @@ function TabRadioItem({ routeName, isFocused, onPress, onLongPress }: TabItemPro
       </Animated.View>
     </TouchableOpacity>
   );
-}
+});
 
 function FloatingRadioTabBar(props: any) {
   const insets = useSafeAreaInsets();

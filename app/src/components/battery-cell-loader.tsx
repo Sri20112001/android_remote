@@ -8,7 +8,7 @@ interface BatteryCellLoaderProps {
   color?: string;
 }
 
-export function BatteryCellLoader({
+export const BatteryCellLoader = React.memo(function BatteryCellLoader({
   percent = 50,
   isCharging = false,
   color = '#22f49e',
@@ -84,7 +84,7 @@ export function BatteryCellLoader({
       <View style={[styles.terminalCap, { backgroundColor: color }]} />
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {

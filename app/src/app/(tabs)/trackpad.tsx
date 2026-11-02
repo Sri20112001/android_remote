@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -30,10 +30,10 @@ export default function TrackpadScreen() {
   const [sensitivity, setSensitivity] = useState<number>(1.0);
   const [showKeyboard, setShowKeyboard] = useState<boolean>(false);
   const [inputText, setInputText] = useState<string>('');
-  const [touchCoord, setTouchCoord] = useState<{ x: number; y: number } | null>(null);
 
-  // Animations
+  // Animations & Native Drivers
   const pulseAnim = useRef(new Animated.Value(0.4)).current;
+  const touchPos = useRef(new Animated.ValueXY({ x: -100, y: -100 })).current;
   const touchScale = useRef(new Animated.Value(0.3)).current;
   const touchOpacity = useRef(new Animated.Value(0)).current;
   const leftScale = useRef(new Animated.Value(1)).current;
@@ -77,7 +77,7 @@ export default function TrackpadScreen() {
   }, [showKeyboard, keyboardAnim]);
 
   const triggerTouchRipple = (x: number, y: number) => {
-    setTouchCoord({ x, y });
+    touchPos.setValue({ x: x - 30, y: y - 30 });
     touchScale.setValue(0.3);
     touchOpacity.setValue(0.9);
     Animated.parallel([
@@ -281,21 +281,21 @@ export default function TrackpadScreen() {
       {/* Main Kinetic Trackpad Surface Frame */}
       <View style={styles.trackpadWrapper}>
         <View style={styles.touchSurface} {...panResponder.panHandlers}>
-          {/* Animated Neon Ripple Effect */}
-          {touchCoord && (
-            <Animated.View
-              pointerEvents="none"
-              style={[
-                styles.rippleRing,
-                {
-                  left: touchCoord.x - 30,
-                  top: touchCoord.y - 30,
-                  opacity: touchOpacity,
-                  transform: [{ scale: touchScale }],
-                },
-              ]}
-            />
-          )}
+          {/* Animated Neon Ripple Effect (Native GPU Accelerated) */}
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.rippleRing,
+              {
+                opacity: touchOpacity,
+                transform: [
+                  { translateX: touchPos.x },
+                  { translateY: touchPos.y },
+                  { scale: touchScale },
+                ],
+              },
+            ]}
+          />
 
           {/* Laser-Etched Reticles */}
           <View style={styles.cornerTL}>
@@ -522,6 +522,8 @@ const styles = StyleSheet.create({
   },
   rippleRing: {
     position: 'absolute',
+    top: 0,
+    left: 0,
     width: 60,
     height: 60,
     borderRadius: 30,

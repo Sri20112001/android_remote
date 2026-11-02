@@ -15,14 +15,99 @@ import { useAgentWS } from '@/api/use-agent-ws';
 
 const FADER_TRACK_HEIGHT = 160;
 
+// Isolated, memoized Stereo VU Meter so dancing jitter animations do not re-render the parent screen
+const StereoVuMeter = React.memo(function StereoVuMeter({
+  volume,
+  isMuted,
+}: {
+  volume: number;
+  isMuted: boolean;
+}) {
+  const [jitterL, setJitterL] = useState(0);
+  const [jitterR, setJitterR] = useState(0);
+
+  useEffect(() => {
+    if (volume === 0 || isMuted) {
+      setJitterL(0);
+      setJitterR(0);
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setJitterL((Math.random() - 0.45) * 14);
+      setJitterR((Math.random() - 0.45) * 14);
+    }, 140);
+
+    return () => clearInterval(interval);
+  }, [volume, isMuted]);
+
+  const effectiveVolL = Math.max(0, Math.min(100, volume + jitterL));
+  const effectiveVolR = Math.max(0, Math.min(100, volume + jitterR));
+
+  return (
+    <View style={styles.vuMeterBox}>
+      <View style={styles.vuLabelRow}>
+        <Text style={styles.vuLabel}>L CH</Text>
+        <Text style={styles.vuLabel}>VU</Text>
+        <Text style={styles.vuLabel}>R CH</Text>
+      </View>
+
+      <View style={styles.vuBarsRow}>
+        {/* Left Channel */}
+        <View style={styles.meterColumn}>
+          {Array.from({ length: 18 }).map((_, i) => {
+            const threshold = (18 - i) * 5.5;
+            const active = effectiveVolL >= threshold;
+            const isRed = i < 3;
+            const isYellow = i >= 3 && i < 7;
+            return (
+              <View
+                key={`l_${i}`}
+                style={[
+                  styles.meterSegment,
+                  active && (isRed ? styles.segRed : isYellow ? styles.segYellow : styles.segGreen),
+                ]}
+              />
+            );
+          })}
+        </View>
+
+        {/* dB Markers */}
+        <View style={styles.markerColumn}>
+          {['0', '-6', '-12', '-18', '-30', '-inf'].map((m) => (
+            <Text key={m} style={styles.markerText}>{m}</Text>
+          ))}
+        </View>
+
+        {/* Right Channel */}
+        <View style={styles.meterColumn}>
+          {Array.from({ length: 18 }).map((_, i) => {
+            const threshold = (18 - i) * 5.5;
+            const active = effectiveVolR >= threshold;
+            const isRed = i < 3;
+            const isYellow = i >= 3 && i < 7;
+            return (
+              <View
+                key={`r_${i}`}
+                style={[
+                  styles.meterSegment,
+                  active && (isRed ? styles.segRed : isYellow ? styles.segYellow : styles.segGreen),
+                ]}
+              />
+            );
+          })}
+        </View>
+      </View>
+    </View>
+  );
+});
+
 export default function MediaStudioScreen() {
   const insets = useSafeAreaInsets();
   const { isConnected, setVolume, toggleMute, getAudioStatus, sendKeyTap } = useAgentWS();
 
   const [volume, setVolumeState] = useState<number>(50);
   const [isMuted, setIsMuted] = useState<boolean>(false);
-  const [vuJitterL, setVuJitterL] = useState<number>(0);
-  const [vuJitterR, setVuJitterR] = useState<number>(0);
   const [seekMode, setSeekMode] = useState<'web' | 'player'>('web');
   const [isDragging, setIsDragging] = useState<boolean>(false);
 
@@ -78,24 +163,6 @@ export default function MediaStudioScreen() {
         .catch(() => undefined);
     }
   }, [isConnected, getAudioStatus]);
-
-  // Dynamic Dancing VU Meter simulation
-  useEffect(() => {
-    if (volume === 0 || isMuted) {
-      setVuJitterL(0);
-      setVuJitterR(0);
-      return;
-    }
-
-    const interval = setInterval(() => {
-      const jL = (Math.random() - 0.45) * 14;
-      const jR = (Math.random() - 0.45) * 14;
-      setVuJitterL(jL);
-      setVuJitterR(jR);
-    }, 140);
-
-    return () => clearInterval(interval);
-  }, [volume, isMuted]);
 
   // Buttery Smooth Volume Pan Responder
   const panResponder = useRef(
@@ -190,10 +257,6 @@ export default function MediaStudioScreen() {
   // Convert volume percent (0-100) to approximate dBFS
   const dbfs = volume === 0 ? '-inf' : ((volume - 100) * 0.4).toFixed(1);
 
-  // Dynamic effective meter level
-  const effectiveVolL = Math.max(0, Math.min(100, volume + vuJitterL));
-  const effectiveVolR = Math.max(0, Math.min(100, volume + vuJitterR));
-
   return (
     <ScrollView
       style={[styles.container, { paddingTop: Math.max(insets.top, 12) }]}
@@ -229,61 +292,8 @@ export default function MediaStudioScreen() {
         </View>
 
         <View style={styles.mixerRow}>
-          {/* Stereo VU Meter Dynamic Dancing Simulation */}
-          <View style={styles.vuMeterBox}>
-            <View style={styles.vuLabelRow}>
-              <Text style={styles.vuLabel}>L CH</Text>
-              <Text style={styles.vuLabel}>VU</Text>
-              <Text style={styles.vuLabel}>R CH</Text>
-            </View>
-
-            <View style={styles.vuBarsRow}>
-              {/* Left Channel */}
-              <View style={styles.meterColumn}>
-                {Array.from({ length: 18 }).map((_, i) => {
-                  const threshold = (18 - i) * 5.5;
-                  const active = effectiveVolL >= threshold;
-                  const isRed = i < 3;
-                  const isYellow = i >= 3 && i < 7;
-                  return (
-                    <View
-                      key={`l_${i}`}
-                      style={[
-                        styles.meterSegment,
-                        active && (isRed ? styles.segRed : isYellow ? styles.segYellow : styles.segGreen),
-                      ]}
-                    />
-                  );
-                })}
-              </View>
-
-              {/* dB Markers */}
-              <View style={styles.markerColumn}>
-                {['0', '-6', '-12', '-18', '-30', '-inf'].map((m) => (
-                  <Text key={m} style={styles.markerText}>{m}</Text>
-                ))}
-              </View>
-
-              {/* Right Channel */}
-              <View style={styles.meterColumn}>
-                {Array.from({ length: 18 }).map((_, i) => {
-                  const threshold = (18 - i) * 5.5;
-                  const active = effectiveVolR >= threshold;
-                  const isRed = i < 3;
-                  const isYellow = i >= 3 && i < 7;
-                  return (
-                    <View
-                      key={`r_${i}`}
-                      style={[
-                        styles.meterSegment,
-                        active && (isRed ? styles.segRed : isYellow ? styles.segYellow : styles.segGreen),
-                      ]}
-                    />
-                  );
-                })}
-              </View>
-            </View>
-          </View>
+          {/* Isolated Memoized Stereo VU Meter */}
+          <StereoVuMeter volume={volume} isMuted={isMuted} />
 
           {/* ========================================================= */}
           {/* SOUNDBOARD FADER PANEL (Snd-Fader-Panel)                   */}

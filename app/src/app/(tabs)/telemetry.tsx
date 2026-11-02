@@ -75,27 +75,27 @@ export default function TelemetryScreen() {
     };
   }, [sweepAnim, pulseAnim]);
 
-  // Smoothly animate progress bars when metrics update
+  // Smoothly animate progress bars with 100% native driver
   useEffect(() => {
     if (metrics?.cpu?.usage_percent !== undefined) {
       Animated.timing(cpuAnim, {
         toValue: Math.min(100, Math.max(0, metrics.cpu.usage_percent)),
         duration: 400,
-        useNativeDriver: false, // width animation
+        useNativeDriver: true,
       }).start();
     }
     if (metrics?.memory?.usage_percent !== undefined) {
       Animated.timing(ramAnim, {
         toValue: Math.min(100, Math.max(0, metrics.memory.usage_percent)),
         duration: 400,
-        useNativeDriver: false,
+        useNativeDriver: true,
       }).start();
     }
     if (metrics?.battery?.percentage !== undefined) {
       Animated.timing(batteryAnim, {
         toValue: Math.min(100, Math.max(0, metrics.battery.percentage)),
         duration: 400,
-        useNativeDriver: false,
+        useNativeDriver: true,
       }).start();
     }
   }, [metrics, cpuAnim, ramAnim, batteryAnim]);
@@ -136,19 +136,22 @@ export default function TelemetryScreen() {
   const batteryPercent = metrics?.battery?.percentage ?? 100;
   const isCharging = metrics?.battery?.charging ?? false;
 
-  const cpuWidth = cpuAnim.interpolate({
+  const cpuScale = cpuAnim.interpolate({
     inputRange: [0, 100],
-    outputRange: ['0%', '100%'],
+    outputRange: [0.001, 1],
+    extrapolate: 'clamp',
   });
 
-  const ramWidth = ramAnim.interpolate({
+  const ramScale = ramAnim.interpolate({
     inputRange: [0, 100],
-    outputRange: ['0%', '100%'],
+    outputRange: [0.001, 1],
+    extrapolate: 'clamp',
   });
 
-  const batteryWidth = batteryAnim.interpolate({
+  const batteryScale = batteryAnim.interpolate({
     inputRange: [0, 100],
-    outputRange: ['0%', '100%'],
+    outputRange: [0.001, 1],
+    extrapolate: 'clamp',
   });
 
   return (
@@ -202,9 +205,9 @@ export default function TelemetryScreen() {
           <View style={styles.progressBarBg}>
             <Animated.View
               style={[
-                styles.progressBarFill,
+                styles.progressBarFillAnim,
                 {
-                  width: cpuWidth,
+                  transform: [{ scaleX: cpuScale }],
                   backgroundColor: cpuPercent > 80 ? '#EF4444' : '#CAF300',
                 },
               ]}
@@ -228,9 +231,9 @@ export default function TelemetryScreen() {
           <View style={styles.progressBarBg}>
             <Animated.View
               style={[
-                styles.progressBarFill,
+                styles.progressBarFillAnim,
                 {
-                  width: ramWidth,
+                  transform: [{ scaleX: ramScale }],
                   backgroundColor: ramPercent > 85 ? '#EF4444' : '#38BDF8',
                 },
               ]}
@@ -290,9 +293,9 @@ export default function TelemetryScreen() {
           <View style={styles.progressBarBg}>
             <Animated.View
               style={[
-                styles.progressBarFill,
+                styles.progressBarFillAnim,
                 {
-                  width: batteryWidth,
+                  transform: [{ scaleX: batteryScale }],
                   backgroundColor: isCharging ? '#22f49e' : batteryPercent < 20 ? '#EF4444' : '#22f49e',
                 },
               ]}
@@ -468,6 +471,12 @@ const styles = StyleSheet.create({
   progressBarFill: {
     height: '100%',
     borderRadius: 4,
+  },
+  progressBarFillAnim: {
+    height: '100%',
+    width: '100%',
+    borderRadius: 4,
+    transformOrigin: 'left',
   },
   gaugeSubText: {
     color: '#64748B',

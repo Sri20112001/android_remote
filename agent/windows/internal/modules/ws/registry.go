@@ -80,5 +80,10 @@ func (r *Registry) Dispatch(ctx context.Context, id middleware.Identity, req *Fr
 		return NewResponseError(req.ID, constants.CodeInternal, "internal server error")
 	}
 
+	if res == nil {
+		return nil
+	}
+
 	return NewResponseSuccess(req.ID, res)
 }
+

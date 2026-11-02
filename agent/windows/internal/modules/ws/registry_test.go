@@ -80,4 +80,20 @@ func TestRegistry(t *testing.T) {
 			t.Errorf("expected internal error, got %+v", resp)
 		}
 	})
+
+	t.Run("fire and forget returns nil frame", func(t *testing.T) {
+		reg.Register("input", "mouse_move", func(ctx context.Context, id middleware.Identity, payload json.RawMessage) (any, error) {
+			return nil, nil
+		})
+		req := &ws.Frame{
+			Type:   ws.TypeCommand,
+			ID:     "104",
+			Module: "input",
+			Action: "mouse_move",
+		}
+		resp := reg.Dispatch(ctx, id, req)
+		if resp != nil {
+			t.Errorf("expected nil response for fire-and-forget handler, got %+v", resp)
+		}
+	})
 }
