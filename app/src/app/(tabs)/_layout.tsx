@@ -1,5 +1,5 @@
 import React, { useRef, useEffect } from 'react';
-import { Tabs, useRouter, useNavigation } from 'expo-router';
+import { Tabs, useRouter } from 'expo-router';
 import { View, TouchableOpacity, StyleSheet, Animated } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -68,8 +68,6 @@ function TabRadioItem({ routeName, isFocused, onPress, onLongPress }: TabItemPro
 function FloatingRadioTabBar(props: any) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const navHook = useNavigation<any>();
-  const navigation = props?.navigation || navHook;
   const state = props?.state;
 
   if (!state?.routes) {
@@ -83,31 +81,8 @@ function FloatingRadioTabBar(props: any) {
           const isFocused = state.index === index;
 
           const onPress = () => {
-            let defaultPrevented = false;
-            if (navigation && typeof navigation.emit === 'function') {
-              const event = navigation.emit({
-                type: 'tabPress',
-                target: route.key,
-                canPreventDefault: true,
-              });
-              defaultPrevented = !!event?.defaultPrevented;
-            }
-
-            if (!isFocused && !defaultPrevented) {
-              if (navigation && typeof navigation.navigate === 'function') {
-                navigation.navigate(route.name);
-              } else {
-                router.push(`/(tabs)/${route.name}` as any);
-              }
-            }
-          };
-
-          const onLongPress = () => {
-            if (navigation && typeof navigation.emit === 'function') {
-              navigation.emit({
-                type: 'tabLongPress',
-                target: route.key,
-              });
+            if (!isFocused) {
+              router.push(`/(tabs)/${route.name}` as any);
             }
           };
 
@@ -117,7 +92,7 @@ function FloatingRadioTabBar(props: any) {
               routeName={route.name}
               isFocused={isFocused}
               onPress={onPress}
-              onLongPress={onLongPress}
+              onLongPress={() => undefined}
             />
           );
         })}
