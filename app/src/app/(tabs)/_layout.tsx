@@ -1,5 +1,5 @@
 import React, { useRef, useEffect } from 'react';
-import { Tabs } from 'expo-router';
+import { Tabs, useRouter, useNavigation } from 'expo-router';
 import { View, TouchableOpacity, StyleSheet, Animated } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -65,8 +65,16 @@ function TabRadioItem({ routeName, isFocused, onPress, onLongPress }: TabItemPro
   );
 }
 
-function FloatingRadioTabBar({ state, descriptors, navigation }: any) {
+function FloatingRadioTabBar(props: any) {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const navHook = useNavigation<any>();
+  const navigation = props?.navigation || navHook;
+  const state = props?.state;
+
+  if (!state?.routes) {
+    return null;
+  }
 
   return (
     <View style={[styles.tabBarWrapper, { paddingBottom: Math.max(insets.bottom, 10) }]}>
@@ -75,22 +83,32 @@ function FloatingRadioTabBar({ state, descriptors, navigation }: any) {
           const isFocused = state.index === index;
 
           const onPress = () => {
-            const event = navigation.emit({
-              type: 'tabPress',
-              target: route.key,
-              canPreventDefault: true,
-            });
+            let defaultPrevented = false;
+            if (navigation && typeof navigation.emit === 'function') {
+              const event = navigation.emit({
+                type: 'tabPress',
+                target: route.key,
+                canPreventDefault: true,
+              });
+              defaultPrevented = !!event?.defaultPrevented;
+            }
 
-            if (!isFocused && !event.defaultPrevented) {
-              navigation.navigate(route.name);
+            if (!isFocused && !defaultPrevented) {
+              if (navigation && typeof navigation.navigate === 'function') {
+                navigation.navigate(route.name);
+              } else {
+                router.push(`/(tabs)/${route.name}` as any);
+              }
             }
           };
 
           const onLongPress = () => {
-            navigation.emit({
-              type: 'tabLongPress',
-              target: route.key,
-            });
+            if (navigation && typeof navigation.emit === 'function') {
+              navigation.emit({
+                type: 'tabLongPress',
+                target: route.key,
+              });
+            }
           };
 
           return (
