@@ -226,7 +226,6 @@ export default function TrackpadScreen() {
       gesture.holdTimer = null;
       if (gesture.dragging) return;
       gesture.dragging = true;
-      setIsDragging(true);
       latest.sendMouseDown('left');
       triggerHaptic.medium();
     }, HOLD_TO_DRAG_MS);
@@ -237,7 +236,6 @@ export default function TrackpadScreen() {
     cancelHoldDrag();
     if (!gesture.dragging) return false;
     gesture.dragging = false;
-    setIsDragging(false);
     latest.sendMouseUp('left');
     return true;
   };

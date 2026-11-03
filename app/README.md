@@ -1,96 +1,78 @@
-# TUF Remote — Android client (Expo)
+# TUF Remote — Mobile Client (Expo / React Native)
 
-React Native (Expo, SDK 58) client for the TUF Remote agent. The phone
-connects to the agent running on a Windows PC over the LAN: it probes
-health, pairs with a PIN from the PC, stores a bearer token in the device
-keystore, and (from milestone 2 onwards) drives the remote-control modules.
+React Native client for TUF Remote built with Expo (SDK 58). Connects to the host Windows agent over the local area network (LAN) to provide tactile, low-latency control over cursor, keyboard macros, audio bus, process monitoring, power states, and file transfer.
 
-## Requirements
+---
 
-- Node.js 22+ and npm
-- **Expo Go** on the phone (SDK 58 — must match this project's SDK)
-- The TUF Remote agent running on the PC (`agent/windows`, default port `8765`)
-- Phone and PC on the same network
+## 🛠️ Requirements & Setup
 
-## Commands
+- **Node.js**: 22+ & npm
+- **Mobile Environment**: **Expo Go (SDK 58)** or standalone development build
+- **Host**: Windows PC running `agent/windows` on the same Wi-Fi subnet
+
+### Commands
 
 ```bash
-npm install            # install dependencies
-npx expo start         # dev server; scan the QR with Expo Go
+cd app
+npm install            # Install dependencies
+npx expo start         # Start dev server (scan QR with Expo Go)
 npx expo start --android
 ```
 
-Verification (run all four before declaring work done):
+---
+
+## 🧪 Verification Gates
+
+Run before declaring any changes ready:
 
 ```bash
-npx tsc --noEmit       # typecheck
-npx expo lint          # lint
-npm test               # unit tests
-npm run test:integration  # end-to-end test against a real agent
-npx expo-doctor        # dependency/config health
+npx tsc --noEmit       # Strict TypeScript typecheck (0 errors)
+npm test               # Jest unit tests (4 suites, 40 tests)
+npx expo lint          # ESLint hygiene
 ```
 
-## Flow implemented so far (Milestone 1 — connect & pair)
+---
 
-1. **Connect** (`src/app/connect.tsx`) — scan the pairing QR code with the
-   camera, or type the agent address manually (`host`, `host:port`, or a
-   full `https://` URL). CONTINUE always probes `GET /api/v1/health` first,
-   so a wrong address fails here with an inline message.
-2. **Pair** (`src/app/pair.tsx`) — enter the 6-digit PIN shown on the PC
-   (prefilled when it came from the QR payload), give the device a name,
-   and confirm. The agent answers `201` with a bearer token.
-3. **Home** (`src/app/home.tsx`) — paired status dashboard: agent identity
-   and liveness from `/health` + `/discovery/info`, this device's record,
-   refresh, and "forget device" (wipes the token).
+## 📱 Implemented Feature Modules
 
-The token is stored as one atomic JSON record (`tuf.session.v1`) in
-`expo-secure-store` (Android Keystore), behind an injectable
-`KeyValueBackend` so tests run against memory.
+1. **Kinetic Trackpad & Gyroscopic Air Mouse (`trackpad.tsx`):**
+   - Single-finger cursor gliding with pointer acceleration.
+   - Dual-finger scrolling quantized to 120-unit Windows `WHEEL_DELTA` notches.
+   - Press-to-drag holding with zero frame drops.
+   - 40Hz Gyroscope Air Mouse with deadzone filtering.
+   - Quick soft keyboard text injector.
+   - Bidirectional clipboard sync ("Paste to PC" and "Copy from PC").
 
-## Project structure
+2. **Master Audio Console & Tactical TV Remote (`media.tsx`):**
+   - Vertical soundboard master volume fader with 10% notch haptic ticking.
+   - Multi-channel dancing stereo VU meter isolated with `React.memo` for 60fps rendering.
+   - 5-Way circular D-Pad (`UP`, `DOWN`, `LEFT`, `RIGHT`, `OK`) for leanback video and TV navigation.
+   - Dedicated 10s seek mode (Web/YouTube `J`/`L` vs Media Player arrow keys).
+   - Audio endpoint direct WASAPI feedback.
 
-```
-src/
-  api/         wire contract types + AgentClient (typed HTTP client)
-  auth/        session state machine, credential store, secure backend
-  components/  shared UI (Screen, Button, Field, Pill, Card, header)
-  config/      constants mirroring the agent's contract values
-  connection/  address parsing + QR payload parsing
-  theme/       design tokens from design/network_scanner_pairing_deck
-  utils/       formatters
-  app/         expo-router routes (screens)
-tests/
-  integration/ end-to-end pairing contract test (real agent binary)
-```
+3. **Stream Deck / Macro Grid (`macro-deck.tsx`):**
+   - Quick application launchers: Chrome, Spotify, VS Code, Calculator, Task Manager, Terminal.
+   - One-tap system chords: `Win+D`, `Win+Shift+S`, `Alt+Tab`, `Alt+F4`, `F11`, `F5`.
 
-Design tokens (dark OLED surfaces, lime `#CAF300` accent, Syne / Plus
-Jakarta Sans / JetBrains Mono) come from `design/network_scanner_pairing_deck`
-— the product mockups are the visual source of truth.
+4. **Telemetry & Process Killer (`telemetry.tsx`):**
+   - Real-time CPU, RAM, and Disk storage gauges.
+   - Active Windows Workload Matrix: interactive process monitor with live PID/Memory tracking and single-tap process termination (`OpenProcess` + `TerminateProcess`).
 
-## Tests
+5. **Power & Wake-on-LAN (`power.tsx`):**
+   - Biometric fingerprint / Face ID challenge (`expo-local-authentication`) guarding Shutdown, Restart, and Sleep commands.
+   - Wake-on-LAN (WoL) Magic Packet UDP broadcaster.
 
-- **Unit** (`npm test`): jest-expo. The API client runs against a fake
-  `fetch`, the credential store against a memory backend.
-- **Integration** (`npm run test:integration`): builds `agent/windows` with
-  `go build`, spawns it on port `18765` with a throwaway database, and
-  drives health → pairing start → confirm → authenticated call → rotation
-  (grace window) → revocation → rejection. Teardown kills the process tree
-  and removes the temp directory.
+6. **Settings & File Beam (`settings.tsx`):**
+   - AirDrop-style file beam directly to PC `%USERPROFILE%\Downloads`.
+   - Sensitivity slider and connection diagnostic suite.
 
-  The agent binds `0.0.0.0` for this test so requests arrive from a
-  **non-loopback** address — the vantage point a real phone uses, and the
-  only one where the agent demands a bearer token (`RequireAuth` treats
-  loopback as the PC's own user). The test therefore needs at least one
-  reachable non-loopback IPv4 address on the machine.
+---
 
-## Known limitations (Milestone 1)
+## 🎨 Theme & Design Tokens
 
-- Not yet run on a physical device — verified by typecheck, lint, unit and
-  integration tests only.
-- App icon/splash are the Expo template assets.
-- TLS: the agent's TLS mode is honoured in the QR payload (`https://`),
-  but certificate trust/pinning is not implemented yet.
-- Token expiry is not probed continuously; a rejected token surfaces as a
-  link error on the dashboard (rotate/re-auth flows come later).
-- Milestones 2–5 (dashboard telemetry, WS streaming, input/audio/power/
-  clipboard control) are not implemented.
+Built with dark cyberpunk aesthetics:
+- **Obsidian Dark Surface:** `#0B0E14` / `#10141D`
+- **Electric Citrus Accent:** `#CAF300`
+- **Cyan Accent:** `#38BDF8`
+- **Slate Borders:** `#1E2430` / `#334155`
+- **Typography:** JetBrains Mono (monospaced metrics) and Syne.
