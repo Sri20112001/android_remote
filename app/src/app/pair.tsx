@@ -11,7 +11,7 @@ import { Platform, Text, View } from 'react-native';
 
 import { ApiError, displayOrigin } from '@/api/client';
 import { AppHeader, IconButton } from '@/components/app-header';
-import { Banner, Card, MonoLabel } from '@/components/typography';
+import { Banner, Card } from '@/components/typography';
 import { Button } from '@/components/button';
 import { Field } from '@/components/field';
 import { Screen } from '@/components/screen';

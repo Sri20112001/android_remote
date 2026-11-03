@@ -36,6 +36,17 @@ func (f *fakeMetricsProvider) CollectMetrics(ctx context.Context) (monitoring.Sy
 	}, nil
 }
 
+func (f *fakeMetricsProvider) GetProcesses(ctx context.Context) ([]monitoring.ProcessInfo, error) {
+	return []monitoring.ProcessInfo{
+		{PID: 1001, Name: "chrome.exe", MemoryMB: 320.5},
+		{PID: 1002, Name: "code.exe", MemoryMB: 215.0},
+	}, nil
+}
+
+func (f *fakeMetricsProvider) KillProcess(pid int) error {
+	return nil
+}
+
 type fakeTokenValidator struct{}
 
 func (f *fakeTokenValidator) ValidateToken(ctx context.Context, token string) (middleware.Identity, error) {

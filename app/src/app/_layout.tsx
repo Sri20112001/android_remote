@@ -24,7 +24,6 @@ import { useEffect, useMemo } from 'react';
 import { CredentialStore } from '@/auth/credential-store';
 import { secureStoreBackend } from '@/auth/secure-backend';
 import { SessionProvider } from '@/auth/session';
-import { Color } from '@/theme/tokens';
 
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
 

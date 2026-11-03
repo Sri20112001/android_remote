@@ -37,3 +37,11 @@ type DiskMetrics struct {
 	UsedBytes    uint64  `json:"used_bytes"`
 	UsagePercent float64 `json:"usage_percent"`
 }
+
+// ProcessInfo describes an active host OS process.
+type ProcessInfo struct {
+	PID      int     `json:"pid"`
+	Name     string  `json:"name"`
+	MemoryMB float64 `json:"memory_mb"`
+}
+

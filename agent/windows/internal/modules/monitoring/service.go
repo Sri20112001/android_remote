@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/tuf-remote/agent/internal/constants"
 	"github.com/tuf-remote/agent/internal/middleware"
 	"github.com/tuf-remote/agent/internal/modules/ws"
 )
@@ -31,10 +32,27 @@ func (s *Service) GetMetrics(ctx context.Context) (SystemMetrics, error) {
 	return s.provider.CollectMetrics(ctx)
 }
 
-// RegisterWS registers the monitoring command with the WebSocket registry.
+// RegisterWS registers the monitoring commands with the WebSocket registry.
 func (s *Service) RegisterWS(registry *ws.Registry) {
 	registry.Register("monitoring", "metrics", func(ctx context.Context, id middleware.Identity, payload json.RawMessage) (any, error) {
 		return s.GetMetrics(ctx)
+	})
+
+	registry.Register("monitoring", "processes", func(ctx context.Context, id middleware.Identity, payload json.RawMessage) (any, error) {
+		return s.provider.GetProcesses(ctx)
+	})
+
+	registry.Register("monitoring", "kill_process", func(ctx context.Context, id middleware.Identity, payload json.RawMessage) (any, error) {
+		var req struct {
+			PID int `json:"pid"`
+		}
+		if err := json.Unmarshal(payload, &req); err != nil {
+			return nil, ws.NewCommandError(constants.CodeInvalidRequest, "invalid json payload")
+		}
+		if err := s.provider.KillProcess(req.PID); err != nil {
+			return nil, ws.NewCommandError(constants.CodeInternal, err.Error())
+		}
+		return map[string]bool{"success": true}, nil
 	})
 }
 

@@ -26,6 +26,7 @@ export class AgentWSClient {
   private correlationMap = new Map<string, { resolve: (val: any) => void; reject: (err: any) => void; timer: any }>();
   private eventListeners = new Map<string, Set<(data: any) => void>>();
   private stateListeners = new Set<(state: ConnectionState) => void>();
+  private rttListeners = new Set<(ms: number) => void>();
   private idCounter = 1;
   private shouldReconnect = true;
 
@@ -49,6 +50,8 @@ export class AgentWSClient {
 
       this.ws.onopen = () => {
         this.setState('connected');
+        // Probe immediately so the telemetry readout has a value at once.
+        this.send({ type: 'ping', ts: Date.now() });
         this.startPing();
       };
 
@@ -111,6 +114,18 @@ export class AgentWSClient {
     };
   }
 
+  /**
+   * Subscribe to the measured round-trip time (ping → pong) in milliseconds.
+   * The agent echoes our `ts` back untouched, so this is measured entirely
+   * locally — no clock sync with the PC involved.
+   */
+  public onRTT(listener: (ms: number) => void): () => void {
+    this.rttListeners.add(listener);
+    return () => {
+      this.rttListeners.delete(listener);
+    };
+  }
+
   public send(frame: Partial<WSFrame>): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       return;
@@ -148,7 +163,9 @@ export class AgentWSClient {
   }
 
   private handleFrame(frame: WSFrame): void {
-    if (frame.type === 'response' && frame.id) {
+    if (frame.type === 'pong') {
+      this.handlePong(frame);
+    } else if (frame.type === 'response' && frame.id) {
       const handler = this.correlationMap.get(frame.id);
       if (handler) {
         clearTimeout(handler.timer);
@@ -167,11 +184,20 @@ export class AgentWSClient {
     }
   }
 
+  private handlePong(frame: WSFrame): void {
+    if (typeof frame.ts !== 'number') return;
+    const rtt = Date.now() - frame.ts;
+    if (!Number.isFinite(rtt) || rtt < 0) return;
+    this.rttListeners.forEach((fn) => fn(rtt));
+  }
+
   private startPing(): void {
     this.stopPing();
+    // Doubles as the RTT probe behind the telemetry PING readout: frequent
+    // enough to be live, cheap enough (a ~40 byte frame) to be free.
     this.pingTimer = setInterval(() => {
       this.send({ type: 'ping', ts: Date.now() });
-    }, 15000);
+    }, 2000);
   }
 
   private stopPing(): void {

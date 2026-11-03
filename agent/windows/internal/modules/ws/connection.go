@@ -24,6 +24,7 @@ type Connection struct {
 	registry  *Registry
 	logger    *slog.Logger
 	send      chan *Frame
+	cmdCh     chan *Frame
 	closeChan chan struct{}
 	closeOnce sync.Once
 	closed    atomic.Bool
@@ -46,6 +47,7 @@ func NewConnection(
 		registry:  registry,
 		logger:    logger,
 		send:      make(chan *Frame, 256),
+		cmdCh:     make(chan *Frame, 256),
 		closeChan: make(chan struct{}),
 	}
 }
@@ -88,7 +90,7 @@ func (c *Connection) Close(code constants.ErrorCode, reason string) {
 }
 
 // ReadPump listens for inbound frames from the client.
-func (c *Connection) ReadPump(ctx context.Context) {
+func (c *Connection) ReadPump() {
 	defer func() {
 		c.Close(constants.CodeShutdown, "connection terminated")
 	}()
@@ -126,13 +128,37 @@ func (c *Connection) ReadPump(ctx context.Context) {
 			// Heartbeat acknowledged
 
 		case TypeCommand:
-			resp := c.registry.Dispatch(ctx, c.identity, &frame)
-			if resp != nil {
-				c.Send(resp)
+			// Hand off to the worker instead of dispatching here: handlers
+			// such as clipboard and audio shell out to PowerShell for
+			// hundreds of milliseconds, and dispatching inline would stall
+			// the read loop — every mouse move queued behind it would wait.
+			// A single FIFO channel keeps command order intact.
+			select {
+			case c.cmdCh <- &frame:
+			case <-c.closeChan:
+				return
 			}
 
 		default:
 			c.Send(NewProtocolErrorFrame(constants.CodeInvalidRequest, "unknown message type"))
+		}
+	}
+}
+
+// CommandPump dispatches queued commands in FIFO order on its own goroutine,
+// so a slow handler can never block ReadPump (and therefore can never delay
+// the mouse and keyboard frames behind it).
+func (c *Connection) CommandPump(ctx context.Context) {
+	for {
+		select {
+		case <-c.closeChan:
+			return
+
+		case frame := <-c.cmdCh:
+			resp := c.registry.Dispatch(ctx, c.identity, frame)
+			if resp != nil {
+				c.Send(resp)
+			}
 		}
 	}
 }

@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"os/exec"
+	"strings"
 
 	"github.com/tuf-remote/agent/internal/constants"
 	"github.com/tuf-remote/agent/internal/middleware"
@@ -135,6 +137,41 @@ func (s *Service) RegisterWS(registry *ws.Registry) {
 		_ = json.Unmarshal(payload, &req)
 		req.Action = KeyActionText
 		_ = s.InjectKeyboard(req)
+		return map[string]bool{"success": true}, nil
+	})
+
+	registry.Register("input", "launch_app", func(ctx context.Context, id middleware.Identity, payload json.RawMessage) (any, error) {
+		var req struct {
+			App string `json:"app"`
+		}
+		if err := json.Unmarshal(payload, &req); err != nil {
+			return nil, ws.NewCommandError(constants.CodeInvalidRequest, "invalid json payload")
+		}
+
+		appKey := strings.ToLower(strings.TrimSpace(req.App))
+		allowedApps := map[string]string{
+			"chrome":    "chrome",
+			"spotify":   "spotify",
+			"code":      "code",
+			"calc":      "calc",
+			"taskmgr":   "taskmgr",
+			"terminal":  "wt",
+			"cmd":       "cmd",
+			"notepad":   "notepad",
+			"explorer":  "explorer",
+			"settings":  "ms-settings:",
+		}
+
+		target, ok := allowedApps[appKey]
+		if !ok {
+			return nil, ws.NewCommandError(constants.CodeInvalidRequest, "app not permitted")
+		}
+
+		cmd := exec.Command("cmd", "/c", "start", target)
+		if err := cmd.Start(); err != nil {
+			return nil, ws.NewCommandError(constants.CodeInternal, "failed to launch app")
+		}
+
 		return map[string]bool{"success": true}, nil
 	})
 }

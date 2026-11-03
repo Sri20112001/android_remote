@@ -90,7 +90,8 @@ func (ctl *Controller) Connect(c *gin.Context) {
 	}
 
 	go wsConn.WritePump()
-	wsConn.ReadPump(c.Request.Context())
+	go wsConn.CommandPump(c.Request.Context())
+	wsConn.ReadPump()
 }
 
 func generateConnID() string {

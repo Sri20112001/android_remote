@@ -1,7 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
+  TouchableOpacity,
+  Alert,
   StyleSheet,
   ScrollView,
   Platform,
@@ -10,7 +12,9 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useAgentWS } from '@/api/use-agent-ws';
+import { useAgentWS, useAgentRTT } from '@/api/use-agent-ws';
+import { triggerHaptic } from '@/utils/haptics';
+import { useTabBarClearance } from '@/hooks/use-tab-bar-clearance';
 import { BatteryCellLoader } from '@/components/battery-cell-loader';
 
 interface MetricsData {
@@ -27,28 +31,45 @@ interface MetricsData {
     percentage: number;
     life_time_seconds?: number;
   };
-  disks?: Array<{
+  disks?: {
     mount: string;
     total_bytes: number;
     free_bytes: number;
     used_bytes: number;
     usage_percent: number;
-  }>;
+  }[];
 }
 
 export default function TelemetryScreen() {
   const insets = useSafeAreaInsets();
-  const { isConnected, getMetrics, onMetrics } = useAgentWS();
+  const tabBarClearance = useTabBarClearance();
+  const { isConnected, getMetrics, onMetrics, getProcesses, killProcess } = useAgentWS();
+  const rttMs = useAgentRTT();
+  const rttLabel = rttMs === null ? '--' : `${rttMs}ms`;
 
   const [metrics, setMetrics] = useState<MetricsData | null>(null);
   const [refreshing, setRefreshing] = useState<boolean>(false);
+  const [processes, setProcesses] = useState<Array<{ pid: number; name: string; memory_mb: number }>>([]);
+  const [loadingProcesses, setLoadingProcesses] = useState<boolean>(false);
+
+  const fetchProcesses = () => {
+    if (isConnected) {
+      setLoadingProcesses(true);
+      getProcesses()
+        .then((data) => {
+          if (data) setProcesses(data);
+        })
+        .catch(() => undefined)
+        .finally(() => setLoadingProcesses(false));
+    }
+  };
 
   // Animations
-  const sweepAnim = useRef(new Animated.Value(0)).current;
-  const pulseAnim = useRef(new Animated.Value(0.4)).current;
-  const cpuAnim = useRef(new Animated.Value(0)).current;
-  const ramAnim = useRef(new Animated.Value(0)).current;
-  const batteryAnim = useRef(new Animated.Value(100)).current;
+  const [sweepAnim] = useState(() => new Animated.Value(0));
+  const [pulseAnim] = useState(() => new Animated.Value(0.4));
+  const [cpuAnim] = useState(() => new Animated.Value(0));
+  const [ramAnim] = useState(() => new Animated.Value(0));
+  const [batteryAnim] = useState(() => new Animated.Value(100));
 
   // Oscilloscope sweep line loop
   useEffect(() => {
@@ -100,8 +121,9 @@ export default function TelemetryScreen() {
     }
   }, [metrics, cpuAnim, ramAnim, batteryAnim]);
 
-  const fetchMetrics = () => {
+  const fetchMetrics = useCallback(() => {
     if (isConnected) {
+      fetchProcesses();
       getMetrics()
         .then((data) => {
           if (data) setMetrics(data);
@@ -111,20 +133,23 @@ export default function TelemetryScreen() {
     } else {
       setRefreshing(false);
     }
-  };
+  }, [isConnected, getMetrics]);
 
   useEffect(() => {
-    fetchMetrics();
+    const initialFetch = setTimeout(() => {
+      fetchMetrics();
+    }, 0);
     const unsub = onMetrics((data) => {
       if (data) setMetrics(data);
     });
 
     const interval = setInterval(fetchMetrics, 3000);
     return () => {
+      clearTimeout(initialFetch);
       unsub();
       clearInterval(interval);
     };
-  }, [isConnected]);
+  }, [isConnected, fetchMetrics, onMetrics]);
 
   const formatGB = (bytes?: number) => {
     if (!bytes) return '0.0 GB';
@@ -135,6 +160,29 @@ export default function TelemetryScreen() {
   const ramPercent = Math.round(metrics?.memory?.usage_percent ?? 0);
   const batteryPercent = metrics?.battery?.percentage ?? 100;
   const isCharging = metrics?.battery?.charging ?? false;
+
+  const handleKillProcess = (pid: number, name: string) => {
+    Alert.alert(
+      'TERMINATE WORKLOAD',
+      `Are you sure you want to end ${name} (PID: ${pid})?`,
+      [
+        { text: 'CANCEL', style: 'cancel' },
+        {
+          text: 'END TASK',
+          style: 'destructive',
+          onPress: () => {
+            triggerHaptic.warning();
+            killProcess(pid)
+              .then(() => {
+                triggerHaptic.success();
+                fetchProcesses();
+              })
+              .catch(() => undefined);
+          },
+        },
+      ]
+    );
+  };
 
   const cpuScale = cpuAnim.interpolate({
     inputRange: [0, 100],
@@ -157,7 +205,7 @@ export default function TelemetryScreen() {
   return (
     <ScrollView
       style={[styles.container, { paddingTop: Math.max(insets.top, 12) }]}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, { paddingBottom: tabBarClearance }]}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={fetchMetrics} tintColor="#CAF300" />
       }
@@ -166,10 +214,11 @@ export default function TelemetryScreen() {
       <View style={styles.header}>
         <View style={styles.titleRow}>
           <Animated.View style={[styles.squareAccent, { opacity: pulseAnim }]} />
-          <Text style={styles.titleText}>// TELEMETRY_CORE</Text>
+          <Text style={styles.titleText}>{'// TELEMETRY_CORE'}</Text>
         </View>
         <View style={styles.rateBadge}>
           <Text style={styles.rateText}>REFRESH: 1000ms // {isConnected ? 'LIVE' : 'OFFLINE'}</Text>
+          <Text style={styles.rateText}>RTT: {rttLabel}</Text>
         </View>
       </View>
 
@@ -355,6 +404,54 @@ export default function TelemetryScreen() {
           )}
         </View>
       </View>
+
+      {/* Active Workload & Process Matrix */}
+      <View style={styles.tile}>
+        <View style={styles.tileHeader}>
+          <View style={styles.gaugeTitleRow}>
+            <View style={[styles.dot, { backgroundColor: '#EF4444' }]} />
+            <Text style={styles.gaugeTitle}>WORKLOAD MATRIX // TOP PROCESSES</Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => {
+              triggerHaptic.selection();
+              fetchProcesses();
+            }}
+            style={styles.refreshIconBtn}
+          >
+            <MaterialCommunityIcons name="refresh" size={14} color="#64748B" />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.processList}>
+          {processes && processes.length > 0 ? (
+            processes.map((p) => (
+              <View key={`proc_${p.pid}`} style={styles.processRow}>
+                <View style={styles.processLeft}>
+                  <Text style={styles.processName} numberOfLines={1}>
+                    {p.name}
+                  </Text>
+                  <Text style={styles.processPID}>PID: {p.pid}</Text>
+                </View>
+
+                <View style={styles.processRight}>
+                  <Text style={styles.processMem}>{p.memory_mb.toFixed(1)} MB</Text>
+                  <TouchableOpacity
+                    style={styles.killBtn}
+                    onPress={() => handleKillProcess(p.pid, p.name)}
+                  >
+                    <Text style={styles.killBtnText}>KILL</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))
+          ) : (
+            <Text style={styles.noDataText}>
+              {loadingProcesses ? 'Scanning active system processes...' : 'No heavy processes detected'}
+            </Text>
+          )}
+        </View>
+      </View>
     </ScrollView>
   );
 }
@@ -366,7 +463,6 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 14,
-    paddingBottom: 88,
     gap: 12,
   },
   header: {
@@ -399,6 +495,7 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     borderWidth: 1,
     borderColor: '#1E2538',
+    gap: 2,
   },
   rateText: {
     color: '#CAF300',
@@ -577,5 +674,69 @@ const styles = StyleSheet.create({
     fontFamily: Platform.select({ default: 'monospace' }),
     textAlign: 'center',
     paddingVertical: 10,
+  },
+
+  refreshIconBtn: {
+    padding: 4,
+    borderRadius: 6,
+    backgroundColor: '#161B26',
+    borderWidth: 1,
+    borderColor: '#1E2538',
+  },
+  processList: {
+    gap: 8,
+    marginTop: 4,
+  },
+  processRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+    backgroundColor: '#0D1117',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#1A2130',
+  },
+  processLeft: {
+    flex: 1,
+    gap: 2,
+    marginRight: 8,
+  },
+  processName: {
+    color: '#F1F5F9',
+    fontSize: 11,
+    fontWeight: '700',
+    fontFamily: Platform.select({ default: 'monospace' }),
+  },
+  processPID: {
+    color: '#64748B',
+    fontSize: 9,
+    fontFamily: Platform.select({ default: 'monospace' }),
+  },
+  processRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  processMem: {
+    color: '#38BDF8',
+    fontSize: 11,
+    fontWeight: '700',
+    fontFamily: Platform.select({ default: 'monospace' }),
+  },
+  killBtn: {
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    borderWidth: 1,
+    borderColor: '#EF4444',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  killBtnText: {
+    color: '#EF4444',
+    fontSize: 9,
+    fontWeight: '800',
+    fontFamily: Platform.select({ default: 'monospace' }),
   },
 });

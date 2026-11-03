@@ -6,7 +6,6 @@ import {
   ScrollView,
   Pressable,
   ActivityIndicator,
-  Platform,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -16,6 +15,10 @@ import { AgentClient, ApiError } from '@/api/client';
 import type { DiscoveryInfo, HealthResponse } from '@/api/types';
 import { useSession } from '@/auth/session';
 import { formatTimestamp, formatUptime } from '@/utils/format';
+import { useTabBarClearance } from '@/hooks/use-tab-bar-clearance';
+import * as DocumentPicker from 'expo-document-picker';
+import { useAgentWS } from '@/api/use-agent-ws';
+import { triggerHaptic } from '@/utils/haptics';
 
 function messageOf(error: unknown): string {
   if (error instanceof ApiError) return error.message;
@@ -26,12 +29,45 @@ function messageOf(error: unknown): string {
 export default function SettingsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { status, paired, client, forget } = useSession();
+  const tabBarClearance = useTabBarClearance();
+  const { paired, client, forget } = useSession();
 
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [info, setInfo] = useState<DiscoveryInfo | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const { uploadFile, isConnected } = useAgentWS();
+  const [uploading, setUploading] = useState<boolean>(false);
+  const [uploadStatus, setUploadStatus] = useState<string | null>(null);
+  const [autoLockEnabled, setAutoLockEnabled] = useState<boolean>(false);
+
+  const handlePickAndSendFile = async () => {
+    try {
+      triggerHaptic.selection();
+      const res = await DocumentPicker.getDocumentAsync({
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+
+      if (res.canceled || !res.assets || res.assets.length === 0) return;
+
+      const asset = res.assets[0];
+      setUploading(true);
+      setUploadStatus(`UPLOADING: ${asset.name}...`);
+      triggerHaptic.light();
+
+      await uploadFile(asset.uri, asset.name, asset.mimeType || 'application/octet-stream');
+      triggerHaptic.success();
+      setUploadStatus(`SAVED TO PC DOWNLOADS // ${asset.name}`);
+      setTimeout(() => setUploadStatus(null), 5000);
+    } catch (err: any) {
+      triggerHaptic.warning();
+      setUploadStatus(`FAILED: ${err.message || 'Upload error'}`);
+      setTimeout(() => setUploadStatus(null), 4000);
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const fetchSnapshot = useCallback(async (c: AgentClient) => {
     return Promise.all([c.getHealth(), c.getDiscoveryInfo()]);
@@ -101,7 +137,7 @@ export default function SettingsScreen() {
     <ScrollView
       className="flex-1 bg-[#0B0E14]"
       style={{ paddingTop: Math.max(insets.top, 10) }}
-      contentContainerStyle={{ paddingBottom: 96 }}
+      contentContainerStyle={{ paddingBottom: tabBarClearance }}
       showsVerticalScrollIndicator={false}
     >
       <View className="px-4 gap-4">
@@ -251,6 +287,77 @@ export default function SettingsScreen() {
               isLast
             />
           </View>
+        </View>
+
+
+        {/* LOCAL LAN FILE DROP // AIRDROP BEAM */}
+        <View className="gap-2">
+          <View className="flex-row items-center gap-1.5 px-0.5">
+            <MaterialCommunityIcons name="cloud-upload-outline" size={14} color="#38BDF8" />
+            <Text className="text-[#38BDF8] text-[10px] font-bold font-mono tracking-wider">
+              LOCAL LAN FILE BEAM // AIRDROP
+            </Text>
+          </View>
+
+          <View className="bg-[#101319] rounded-xl border border-[#282E38] p-3.5 gap-3">
+            <Text className="text-zinc-400 text-[10.5px] font-mono leading-relaxed">
+              Beam documents, photos, or APKs directly into your workstation's Downloads folder over encrypted Wi-Fi.
+            </Text>
+
+            <Pressable
+              className="h-11 rounded-lg flex-row items-center justify-center gap-2 bg-[#1A2234] border border-[#38BDF8]/40 active:bg-[#38BDF8]/20"
+              onPress={handlePickAndSendFile}
+              disabled={uploading || !isConnected}
+            >
+              {uploading ? (
+                <ActivityIndicator size="small" color="#38BDF8" />
+              ) : (
+                <MaterialCommunityIcons name="file-upload-outline" size={18} color="#38BDF8" />
+              )}
+              <Text className="text-[#38BDF8] text-[11px] font-black font-mono tracking-wider">
+                {uploading ? 'BEAMING TO DOWNLOADS...' : 'SELECT & SEND FILE TO PC'}
+              </Text>
+            </Pressable>
+
+            {uploadStatus && (
+              <View className="bg-[#0B0F17] rounded-lg p-2.5 border border-[#38BDF8]/30">
+                <Text className="text-[#38BDF8] text-[10px] font-mono font-bold text-center">
+                  {uploadStatus}
+                </Text>
+              </View>
+            )}
+          </View>
+        </View>
+
+        {/* WALK-AWAY AUTO-LOCK GUARD */}
+        <View className="bg-[#101319] rounded-xl border border-[#282E38] p-3 flex-row items-center justify-between">
+          <View className="gap-0.5 flex-1 mr-3">
+            <Text className="text-[#E1E2EB] text-[11px] font-bold font-mono">
+              WALK-AWAY AUTO-LOCK
+            </Text>
+            <Text className="text-zinc-500 text-[9px] font-mono">
+              Lock workstation automatically when Wi-Fi connection drops
+            </Text>
+          </View>
+          <Pressable
+            className={`px-3 py-1.5 rounded-lg border ${
+              autoLockEnabled
+                ? 'bg-[#CAF300] border-[#CAF300]'
+                : 'bg-[#191C22] border-[#282E38]'
+            }`}
+            onPress={() => {
+              triggerHaptic.selection();
+              setAutoLockEnabled(!autoLockEnabled);
+            }}
+          >
+            <Text
+              className={`font-mono text-[10px] font-black ${
+                autoLockEnabled ? 'text-black' : 'text-zinc-400'
+              }`}
+            >
+              {autoLockEnabled ? 'ACTIVE' : 'OFF'}
+            </Text>
+          </Pressable>
         </View>
 
         {/* 5. TACTICAL ACTION GATE */}

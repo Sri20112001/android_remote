@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Text, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
 
-import { Color, FontFamily, Radius, Spacing, Type } from '@/theme/tokens';
+import { Color, FontFamily, Type } from '@/theme/tokens';
 
 export function MonoLabel({
   children,

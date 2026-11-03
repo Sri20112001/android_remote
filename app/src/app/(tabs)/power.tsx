@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,9 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAgentWS } from '@/api/use-agent-ws';
+import { useTabBarClearance } from '@/hooks/use-tab-bar-clearance';
+import * as LocalAuthentication from 'expo-local-authentication';
+import { triggerHaptic } from '@/utils/haptics';
 
 type PendingAction = {
   type: 'restart' | 'shutdown';
@@ -22,6 +25,7 @@ type PendingAction = {
 
 export default function PowerVaultScreen() {
   const insets = useSafeAreaInsets();
+  const tabBarClearance = useTabBarClearance();
   const {
     lockWorkstation,
     sleepWorkstation,
@@ -35,12 +39,12 @@ export default function PowerVaultScreen() {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   // Animations
-  const alertPulse = useRef(new Animated.Value(1)).current;
-  const lockScale = useRef(new Animated.Value(1)).current;
-  const sleepScale = useRef(new Animated.Value(1)).current;
-  const restartScale = useRef(new Animated.Value(1)).current;
-  const shutdownScale = useRef(new Animated.Value(1)).current;
-  const toastAnim = useRef(new Animated.Value(0)).current;
+  const [alertPulse] = useState(() => new Animated.Value(1));
+  const [lockScale] = useState(() => new Animated.Value(1));
+  const [sleepScale] = useState(() => new Animated.Value(1));
+  const [restartScale] = useState(() => new Animated.Value(1));
+  const [shutdownScale] = useState(() => new Animated.Value(1));
+  const [toastAnim] = useState(() => new Animated.Value(0));
 
   // Pulse animation for safety modal
   useEffect(() => {
@@ -70,9 +74,12 @@ export default function PowerVaultScreen() {
     if (!pending) return;
 
     if (pending.countdown <= 0) {
-      setPending(null);
-      setStatusMessage('Confirmation window expired.');
-      return;
+      // Deferred so the effect body never sets state synchronously.
+      const expired = setTimeout(() => {
+        setPending(null);
+        setStatusMessage('Confirmation window expired.');
+      }, 0);
+      return () => clearTimeout(expired);
     }
 
     const timer = setInterval(() => {
@@ -83,6 +90,7 @@ export default function PowerVaultScreen() {
   }, [pending]);
 
   const pressSpring = (anim: Animated.Value, action: () => void) => {
+    triggerHaptic.light();
     Animated.sequence([
       Animated.timing(anim, { toValue: 0.95, duration: 70, useNativeDriver: true }),
       Animated.spring(anim, { toValue: 1, friction: 4, useNativeDriver: true }),
@@ -119,6 +127,7 @@ export default function PowerVaultScreen() {
   };
 
   const handleStartRestart = () => {
+    triggerHaptic.warning();
     pressSpring(restartScale, () => {
       requestRestart()
         .then((res) => {
@@ -133,6 +142,7 @@ export default function PowerVaultScreen() {
   };
 
   const handleStartShutdown = () => {
+    triggerHaptic.warning();
     pressSpring(shutdownScale, () => {
       requestShutdown()
         .then((res) => {
@@ -146,9 +156,29 @@ export default function PowerVaultScreen() {
     });
   };
 
-  const handleConfirmAction = () => {
+  const handleConfirmAction = async () => {
     if (!pending) return;
 
+    // Biometric security challenge
+    try {
+      const hasHardware = await LocalAuthentication.hasHardwareAsync();
+      const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+      if (hasHardware && isEnrolled) {
+        const bio = await LocalAuthentication.authenticateAsync({
+          promptMessage: `Biometric verification for ${pending.type.toUpperCase()}`,
+          cancelLabel: 'Cancel',
+        });
+        if (!bio.success) {
+          triggerHaptic.warning();
+          setStatusMessage('Biometric verification failed.');
+          return;
+        }
+      }
+    } catch {
+      // Fallback if unsupported
+    }
+
+    triggerHaptic.heavy();
     const token = pending.token;
     const action = pending.type;
     setPending(null);
@@ -167,7 +197,7 @@ export default function PowerVaultScreen() {
   return (
     <ScrollView
       style={[styles.container, { paddingTop: Math.max(insets.top, 12) }]}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, { paddingBottom: tabBarClearance }]}
     >
       {/* Host Telemetry Ribbon */}
       <View style={styles.telemetryCard}>
@@ -367,7 +397,6 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 14,
-    paddingBottom: 88,
     gap: 16,
   },
   telemetryCard: {

@@ -4,7 +4,12 @@ package monitoring
 
 import (
 	"context"
+	"encoding/csv"
 	"fmt"
+	"os/exec"
+	"sort"
+	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -183,3 +188,67 @@ func (p *WindowsMetricsProvider) CollectMetrics(ctx context.Context) (SystemMetr
 
 	return metrics, nil
 }
+
+// GetProcesses executes tasklist to snapshot running processes and returns the top consumers sorted by memory.
+func (p *WindowsMetricsProvider) GetProcesses(ctx context.Context) ([]ProcessInfo, error) {
+	cmd := exec.CommandContext(ctx, "tasklist", "/fo", "csv", "/nh")
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to enumerate processes: %w", err)
+	}
+
+	reader := csv.NewReader(strings.NewReader(string(out)))
+	records, err := reader.ReadAll()
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse process list: %w", err)
+	}
+
+	var list []ProcessInfo
+	for _, rec := range records {
+		if len(rec) < 5 {
+			continue
+		}
+		name := rec[0]
+		pid, _ := strconv.Atoi(rec[1])
+		if pid <= 0 {
+			continue
+		}
+
+		// Memory format is "292,696 K"
+		memStr := strings.TrimSuffix(rec[4], " K")
+		memStr = strings.ReplaceAll(memStr, ",", "")
+		memStr = strings.ReplaceAll(memStr, " ", "")
+		memKB, _ := strconv.ParseFloat(memStr, 64)
+		memMB := memKB / 1024.0
+
+		list = append(list, ProcessInfo{
+			PID:      pid,
+			Name:     name,
+			MemoryMB: float64(int(memMB*10)) / 10.0,
+		})
+	}
+
+	sort.Slice(list, func(i, j int) bool {
+		return list[i].MemoryMB > list[j].MemoryMB
+	})
+
+	if len(list) > 12 {
+		list = list[:12]
+	}
+
+	return list, nil
+}
+
+// KillProcess terminates a process by PID using native Win32 APIs.
+func (p *WindowsMetricsProvider) KillProcess(pid int) error {
+	if pid <= 4 {
+		return fmt.Errorf("cannot terminate protected system process")
+	}
+	handle, err := windows.OpenProcess(windows.PROCESS_TERMINATE, false, uint32(pid))
+	if err != nil {
+		return fmt.Errorf("failed to open process %d: %w", pid, err)
+	}
+	defer windows.CloseHandle(handle)
+	return windows.TerminateProcess(handle, 1)
+}
+

@@ -4,9 +4,13 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -131,6 +135,8 @@ func NewRouter(deps RouterDependencies) *gin.Engine {
 			api.GET(constants.RouteClipboard, auth, deps.ClipboardController.Get)
 			api.POST(constants.RouteClipboard, auth, deps.ClipboardController.Set)
 		}
+
+		api.POST("/files/upload", auth, handleFileUpload(deps.Logger))
 	}
 
 	engine.HandleMethodNotAllowed = true
@@ -190,3 +196,45 @@ func (w slogWriter) Write(p []byte) (int, error) {
 	}
 	return len(p), nil
 }
+
+// handleFileUpload accepts multipart/form-data uploads and writes them safely into the user's Downloads directory.
+func handleFileUpload(logger *slog.Logger) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		file, err := c.FormFile("file")
+		if err != nil {
+			utils.RespondError(c, http.StatusBadRequest, constants.CodeInvalidRequest, "missing file in form-data")
+			return
+		}
+
+		userProfile := os.Getenv("USERPROFILE")
+		if userProfile == "" {
+			userProfile = "."
+		}
+		downloadsDir := filepath.Join(userProfile, "Downloads")
+		_ = os.MkdirAll(downloadsDir, 0755)
+
+		cleanName := filepath.Base(file.Filename)
+		cleanName = strings.ReplaceAll(cleanName, "..", "")
+		cleanName = strings.ReplaceAll(cleanName, "/", "_")
+		cleanName = strings.ReplaceAll(cleanName, "\\", "_")
+		if cleanName == "" || cleanName == "." {
+			cleanName = fmt.Sprintf("drop_%d.bin", time.Now().Unix())
+		}
+
+		destPath := filepath.Join(downloadsDir, cleanName)
+		if err := c.SaveUploadedFile(file, destPath); err != nil {
+			logger.Error("failed to save uploaded file", "error", err, "dest", destPath)
+			utils.RespondError(c, http.StatusInternalServerError, constants.CodeInternal, "failed to save file")
+			return
+		}
+
+		logger.Info("file received from mobile client", "filename", cleanName, "size", file.Size, "dest", destPath)
+		c.JSON(http.StatusOK, gin.H{
+			"success":  true,
+			"filename": cleanName,
+			"path":     destPath,
+			"size":     file.Size,
+		})
+	}
+}
+

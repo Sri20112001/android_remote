@@ -1,48 +1,93 @@
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { useSession } from '@/auth/session';
 import { AgentWSClient, ConnectionState } from './ws-client';
 
-let globalClient: AgentWSClient | null = null;
-let currentKey = '';
+/**
+ * One socket shared by every screen — `useAgentWS()` is called by four tabs
+ * and they must not open four connections.
+ *
+ * The singleton is created and torn down inside an effect, never during
+ * render, and published through `useSyncExternalStore`: that is what makes
+ * the components re-read it after a swap (a plain module read would leave
+ * the first render holding the previous socket).
+ */
+let sharedClient: AgentWSClient | null = null;
+let sharedKey = '';
+
+const clientListeners = new Set<() => void>();
+
+function publishClient(): void {
+  clientListeners.forEach((listener) => listener());
+}
+
+function subscribeToClient(listener: () => void): () => void {
+  clientListeners.add(listener);
+  return () => {
+    clientListeners.delete(listener);
+  };
+}
+
+function getSharedClient(): AgentWSClient | null {
+  return sharedClient;
+}
+
+/** Reuse the socket for this origin+token, replacing any other one. */
+function acquireClient(origin: string, token: string): AgentWSClient {
+  const key = `${origin}_${token}`;
+  if (!sharedClient || sharedKey !== key) {
+    sharedClient?.disconnect();
+    sharedClient = new AgentWSClient(origin, token);
+    sharedKey = key;
+    publishClient();
+  }
+  return sharedClient;
+}
+
+function releaseClient(): void {
+  if (sharedClient) {
+    sharedClient.disconnect();
+    sharedClient = null;
+    sharedKey = '';
+    publishClient();
+  }
+}
 
 export function useAgentWS() {
   const { paired } = useSession();
-  const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected');
+  const client = useSyncExternalStore(subscribeToClient, getSharedClient);
 
-  const client = useMemo(() => {
-    if (!paired) {
-      if (globalClient) {
-        globalClient.disconnect();
-        globalClient = null;
-        currentKey = '';
-      }
-      return null;
-    }
+  /**
+   * The latest state reported, tagged with the client that reported it: a
+   * socket swapped in mid-session starts at `disconnected` instead of
+   * inheriting its predecessor's `connected`.
+   */
+  const [reported, setReported] = useState<{
+    client: AgentWSClient | null;
+    state: ConnectionState;
+  }>({ client: null, state: 'disconnected' });
 
-    const key = `${paired.origin}_${paired.token}`;
-    if (!globalClient || currentKey !== key) {
-      if (globalClient) {
-        globalClient.disconnect();
-      }
-      globalClient = new AgentWSClient(paired.origin, paired.token);
-      currentKey = key;
-    }
-    return globalClient;
-  }, [paired]);
+  const origin = paired?.origin;
+  const token = paired?.token;
 
   useEffect(() => {
-    if (!client) {
-      setConnectionState('disconnected');
+    if (!origin || !token) {
+      releaseClient();
       return;
     }
 
-    const unsubscribe = client.onStateChange(setConnectionState);
-    client.connect();
+    const next = acquireClient(origin, token);
+    const unsubscribe = next.onStateChange((state) => {
+      setReported({ client: next, state });
+    });
+    next.connect();
 
     return () => {
       unsubscribe();
     };
-  }, [client]);
+  }, [origin, token]);
+
+  const connectionState: ConnectionState =
+    client && reported.client === client ? reported.state : 'disconnected';
 
   const sendMouseMove = useCallback((dx: number, dy: number) => {
     if (!client) return;
@@ -176,8 +221,60 @@ export function useAgentWS() {
     return client.sendCommand('power', 'confirm_shutdown', { token: confirmationToken });
   }, [client]);
 
+  const launchApp = useCallback((app: string) => {
+    if (!client) return Promise.reject(new Error('Offline'));
+    return client.sendCommand('input', 'launch_app', { app });
+  }, [client]);
+
+  const getProcesses = useCallback(() => {
+    if (!client) return Promise.reject(new Error('Offline'));
+    return client.sendCommand<Array<{ pid: number; name: string; memory_mb: number }>>('monitoring', 'processes');
+  }, [client]);
+
+  const killProcess = useCallback((pid: number) => {
+    if (!client) return Promise.reject(new Error('Offline'));
+    return client.sendCommand('monitoring', 'kill_process', { pid });
+  }, [client]);
+
+  const getClipboard = useCallback(() => {
+    if (!client) return Promise.reject(new Error('Offline'));
+    return client.sendCommand<{ text: string }>('clipboard', 'get');
+  }, [client]);
+
+  const setClipboard = useCallback((text: string) => {
+    if (!client) return Promise.reject(new Error('Offline'));
+    return client.sendCommand('clipboard', 'set', { text });
+  }, [client]);
+
+  const uploadFile = useCallback(async (fileUri: string, fileName: string, mimeType: string = 'application/octet-stream') => {
+    if (!origin || !token) throw new Error('Not paired or offline');
+    const formData = new FormData();
+    formData.append('file', {
+      uri: fileUri,
+      name: fileName,
+      type: mimeType,
+    } as any);
+
+    const uploadUrl = `${origin}/api/v1/files/upload`;
+    const res = await fetch(uploadUrl, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: formData,
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || 'File upload failed');
+    }
+    return res.json();
+  }, [origin, token]);
+
   return {
     client,
+    origin,
+    token,
     connectionState,
     isConnected: connectionState === 'connected',
     sendMouseMove,
@@ -198,5 +295,39 @@ export function useAgentWS() {
     confirmRestart,
     requestShutdown,
     confirmShutdown,
+    launchApp,
+    getProcesses,
+    killProcess,
+    getClipboard,
+    setClipboard,
+    uploadFile,
   };
+}
+
+/**
+ * Live round-trip time to the agent in milliseconds, or `null` while it
+ * cannot be measured.
+ *
+ * Deliberately separate from `useAgentWS()`: the ping fires every two seconds
+ * and only the telemetry screen wants the number, so only that screen
+ * re-renders for it.
+ */
+export function useAgentRTT(): number | null {
+  const client = useSyncExternalStore(subscribeToClient, getSharedClient);
+  const [reported, setReported] = useState<{
+    client: AgentWSClient | null;
+    ms: number | null;
+  }>({ client: null, ms: null });
+
+  useEffect(() => {
+    if (!client) return;
+    const unsubscribe = client.onRTT((ms) => {
+      setReported({ client, ms });
+    });
+    return () => {
+      unsubscribe();
+    };
+  }, [client]);
+
+  return reported.client === client ? reported.ms : null;
 }

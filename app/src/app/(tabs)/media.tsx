@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,8 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAgentWS } from '@/api/use-agent-ws';
+import { useTabBarClearance } from '@/hooks/use-tab-bar-clearance';
+import { triggerHaptic } from '@/utils/haptics';
 
 const FADER_TRACK_HEIGHT = 160;
 
@@ -28,9 +30,12 @@ const StereoVuMeter = React.memo(function StereoVuMeter({
 
   useEffect(() => {
     if (volume === 0 || isMuted) {
-      setJitterL(0);
-      setJitterR(0);
-      return;
+      // Defer the reset so no state updates happen synchronously in the effect body
+      const t = setTimeout(() => {
+        setJitterL(0);
+        setJitterR(0);
+      }, 0);
+      return () => clearTimeout(t);
     }
 
     const interval = setInterval(() => {
@@ -102,8 +107,20 @@ const StereoVuMeter = React.memo(function StereoVuMeter({
   );
 });
 
+/**
+ * Mutable gesture state for the volume fader.
+ *
+ * Deliberately plain module state rather than a `useRef` or a `useState`:
+ * PanResponder's handlers are constructed during render, where refs may not
+ * be read, while React state objects may not be written to. Only one media
+ * screen is ever mounted and volume is re-synced from the agent on connect,
+ * so sharing these three numbers across mounts is harmless.
+ */
+const fader = { volume: 50, start: 50, lastSend: 0 };
+
 export default function MediaStudioScreen() {
   const insets = useSafeAreaInsets();
+  const tabBarClearance = useTabBarClearance();
   const { isConnected, setVolume, toggleMute, getAudioStatus, sendKeyTap } = useAgentWS();
 
   const [volume, setVolumeState] = useState<number>(50);
@@ -111,31 +128,26 @@ export default function MediaStudioScreen() {
   const [seekMode, setSeekMode] = useState<'web' | 'player'>('web');
   const [isDragging, setIsDragging] = useState<boolean>(false);
 
-  // Mutable refs for fluid gesture tracking and throttling
-  const volumeRef = useRef<number>(50);
-  const startVolumeRef = useRef<number>(50);
-  const lastSendTimeRef = useRef<number>(0);
-
-  // Keep volumeRef in sync
+  // Keep the fader's mirrored volume in sync
   useEffect(() => {
-    volumeRef.current = volume;
+    fader.volume = volume;
   }, [volume]);
 
   // Animations
-  const busPulse = useRef(new Animated.Value(0.4)).current;
-  const playScale = useRef(new Animated.Value(1)).current;
-  const prevScale = useRef(new Animated.Value(1)).current;
-  const nextScale = useRef(new Animated.Value(1)).current;
-  const rewindScale = useRef(new Animated.Value(1)).current;
-  const forwardScale = useRef(new Animated.Value(1)).current;
-  const muteScale = useRef(new Animated.Value(1)).current;
+  const [busPulse] = useState(() => new Animated.Value(0.4));
+  const [playScale] = useState(() => new Animated.Value(1));
+  const [prevScale] = useState(() => new Animated.Value(1));
+  const [nextScale] = useState(() => new Animated.Value(1));
+  const [rewindScale] = useState(() => new Animated.Value(1));
+  const [forwardScale] = useState(() => new Animated.Value(1));
+  const [muteScale] = useState(() => new Animated.Value(1));
 
   // D-Pad Animations
-  const dpadUpScale = useRef(new Animated.Value(1)).current;
-  const dpadDownScale = useRef(new Animated.Value(1)).current;
-  const dpadLeftScale = useRef(new Animated.Value(1)).current;
-  const dpadRightScale = useRef(new Animated.Value(1)).current;
-  const dpadOkScale = useRef(new Animated.Value(1)).current;
+  const [dpadUpScale] = useState(() => new Animated.Value(1));
+  const [dpadDownScale] = useState(() => new Animated.Value(1));
+  const [dpadLeftScale] = useState(() => new Animated.Value(1));
+  const [dpadRightScale] = useState(() => new Animated.Value(1));
+  const [dpadOkScale] = useState(() => new Animated.Value(1));
 
   // Pulse animation for bus header
   useEffect(() => {
@@ -156,7 +168,7 @@ export default function MediaStudioScreen() {
         .then((status) => {
           if (status) {
             setVolumeState(status.level);
-            volumeRef.current = status.level;
+            fader.volume = status.level;
             setIsMuted(status.muted);
           }
         })
@@ -165,49 +177,55 @@ export default function MediaStudioScreen() {
   }, [isConnected, getAudioStatus]);
 
   // Buttery Smooth Volume Pan Responder
-  const panResponder = useRef(
+  const [panResponder] = useState(() =>
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
 
       onPanResponderGrant: () => {
-        startVolumeRef.current = volumeRef.current;
+        fader.start = fader.volume;
         setIsDragging(true);
       },
 
       onPanResponderMove: (evt, gestureState) => {
         // Moving finger UP (-dy) increases volume; moving DOWN (+dy) decreases volume.
         const deltaPercent = -(gestureState.dy / FADER_TRACK_HEIGHT) * 100;
-        const target = Math.max(0, Math.min(100, Math.round(startVolumeRef.current + deltaPercent)));
+        const target = Math.max(0, Math.min(100, Math.round(fader.start + deltaPercent)));
+
+        // Haptic sensory tick whenever crossing every 10% notch
+        if (Math.floor(target / 10) !== Math.floor(fader.volume / 10)) {
+          triggerHaptic.selection();
+        }
 
         setVolumeState(target);
-        volumeRef.current = target;
+        fader.volume = target;
 
         // Throttle WebSocket updates to 90ms during continuous drag
         const now = Date.now();
-        if (now - lastSendTimeRef.current > 90) {
-          lastSendTimeRef.current = now;
+        if (now - fader.lastSend > 90) {
+          fader.lastSend = now;
           setVolume(target).catch(() => undefined);
         }
       },
 
       onPanResponderRelease: () => {
         setIsDragging(false);
-        const finalVol = volumeRef.current;
-        lastSendTimeRef.current = Date.now();
+        const finalVol = fader.volume;
+        fader.lastSend = Date.now();
         setVolume(finalVol).catch(() => undefined);
       },
 
       onPanResponderTerminate: () => {
         setIsDragging(false);
-        const finalVol = volumeRef.current;
-        lastSendTimeRef.current = Date.now();
+        const finalVol = fader.volume;
+        fader.lastSend = Date.now();
         setVolume(finalVol).catch(() => undefined);
       },
     })
-  ).current;
+  );
 
   const handleToggleMute = () => {
+    triggerHaptic.medium();
     Animated.sequence([
       Animated.timing(muteScale, { toValue: 0.92, duration: 70, useNativeDriver: true }),
       Animated.spring(muteScale, { toValue: 1, friction: 4, useNativeDriver: true }),
@@ -219,12 +237,14 @@ export default function MediaStudioScreen() {
   };
 
   const handleQuickVolume = (val: number) => {
+    triggerHaptic.selection();
     setVolumeState(val);
-    volumeRef.current = val;
+    // `fader.volume` follows through the [volume] sync effect above.
     setVolume(val).catch(() => undefined);
   };
 
   const pressSpring = (anim: Animated.Value, action: () => void) => {
+    triggerHaptic.light();
     Animated.sequence([
       Animated.timing(anim, { toValue: 0.88, duration: 60, useNativeDriver: true }),
       Animated.spring(anim, { toValue: 1, friction: 3, useNativeDriver: true }),
@@ -260,14 +280,14 @@ export default function MediaStudioScreen() {
   return (
     <ScrollView
       style={[styles.container, { paddingTop: Math.max(insets.top, 12) }]}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, { paddingBottom: tabBarClearance }]}
     >
       {/* Top Bus Header */}
       <View style={styles.busHeader}>
         <View style={styles.busHeaderTop}>
           <View style={styles.busTagRow}>
             <Animated.View style={[styles.dotPulse, { opacity: busPulse }]} />
-            <Text style={styles.busTitle}>// MASTER_AUDIO_BUS</Text>
+            <Text style={styles.busTitle}>{'// MASTER_AUDIO_BUS'}</Text>
           </View>
           <View style={styles.latencyBadge}>
             <MaterialCommunityIcons name="tune" size={12} color="#CAF300" />
@@ -659,7 +679,6 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 14,
-    paddingBottom: 88,
     gap: 12,
   },
   busHeader: {
