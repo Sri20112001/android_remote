@@ -52,6 +52,32 @@ function releaseClient(): void {
   }
 }
 
+/* ── Power contract ───────────────────────────────────────────────────────
+ * The agent exposes exactly three power commands: `lock`, `request` and
+ * `confirm`. Destructive actions are a two-step flow — `request` mints a
+ * 30 s confirmation token, `confirm` spends it. The screens think in terms
+ * of "restart"/"shutdown", so the translation lives here rather than in
+ * every view.
+ */
+
+interface PowerRequestResponse {
+  confirmation_token: string;
+  action: string;
+  /** RFC 3339 timestamp, 30 s after the request. */
+  expires_at: string;
+}
+
+interface PowerConfirmResponse {
+  action: string;
+  status: string;
+}
+
+/** Whole seconds left on an RFC 3339 expiry; the agent's window is 30 s. */
+function secondsUntil(expiresAt: string): number {
+  const remaining = Date.parse(expiresAt) - Date.now();
+  return Number.isFinite(remaining) ? Math.max(1, Math.round(remaining / 1000)) : 30;
+}
+
 export function useAgentWS() {
   const { paired } = useSession();
   const client = useSyncExternalStore(subscribeToClient, getSharedClient);
@@ -191,35 +217,64 @@ export function useAgentWS() {
     return client.on('monitoring.metrics', handler);
   }, [client]);
 
+  /** Mint a 30 s confirmation token for a destructive power action. */
+  const requestPowerConfirmation = useCallback(
+    (action: 'sleep' | 'restart' | 'shutdown') => {
+      if (!client) return Promise.reject(new Error('Offline'));
+      return client.sendCommand<PowerRequestResponse>('power', 'request', { action });
+    },
+    [client],
+  );
+
+  const confirmPowerAction = useCallback(
+    (confirmationToken: string) => {
+      if (!client) return Promise.reject(new Error('Offline'));
+      return client.sendCommand<PowerConfirmResponse>('power', 'confirm', {
+        confirmation_token: confirmationToken,
+      });
+    },
+    [client],
+  );
+
   const lockWorkstation = useCallback(() => {
     if (!client) return Promise.reject(new Error('Offline'));
     return client.sendCommand('power', 'lock');
   }, [client]);
 
+  /**
+   * Sleep has no separate confirmation screen: the app already asked, so it
+   * spends the token immediately.
+   */
   const sleepWorkstation = useCallback(() => {
-    if (!client) return Promise.reject(new Error('Offline'));
-    return client.sendCommand('power', 'sleep');
-  }, [client]);
+    return requestPowerConfirmation('sleep').then((grant) =>
+      confirmPowerAction(grant.confirmation_token),
+    );
+  }, [requestPowerConfirmation, confirmPowerAction]);
 
+  /** Hand the token to the screen, which runs its own countdown. */
   const requestRestart = useCallback(() => {
-    if (!client) return Promise.reject(new Error('Offline'));
-    return client.sendCommand<{ token: string; expires_in_seconds: number }>('power', 'restart');
-  }, [client]);
+    return requestPowerConfirmation('restart').then((grant) => ({
+      token: grant.confirmation_token,
+      expires_in_seconds: secondsUntil(grant.expires_at),
+    }));
+  }, [requestPowerConfirmation]);
 
-  const confirmRestart = useCallback((confirmationToken: string) => {
-    if (!client) return Promise.reject(new Error('Offline'));
-    return client.sendCommand('power', 'confirm_restart', { token: confirmationToken });
-  }, [client]);
+  const confirmRestart = useCallback(
+    (confirmationToken: string) => confirmPowerAction(confirmationToken),
+    [confirmPowerAction],
+  );
 
   const requestShutdown = useCallback(() => {
-    if (!client) return Promise.reject(new Error('Offline'));
-    return client.sendCommand<{ token: string; expires_in_seconds: number }>('power', 'shutdown');
-  }, [client]);
+    return requestPowerConfirmation('shutdown').then((grant) => ({
+      token: grant.confirmation_token,
+      expires_in_seconds: secondsUntil(grant.expires_at),
+    }));
+  }, [requestPowerConfirmation]);
 
-  const confirmShutdown = useCallback((confirmationToken: string) => {
-    if (!client) return Promise.reject(new Error('Offline'));
-    return client.sendCommand('power', 'confirm_shutdown', { token: confirmationToken });
-  }, [client]);
+  const confirmShutdown = useCallback(
+    (confirmationToken: string) => confirmPowerAction(confirmationToken),
+    [confirmPowerAction],
+  );
 
   const launchApp = useCallback((app: string) => {
     if (!client) return Promise.reject(new Error('Offline'));
@@ -228,7 +283,7 @@ export function useAgentWS() {
 
   const getProcesses = useCallback(() => {
     if (!client) return Promise.reject(new Error('Offline'));
-    return client.sendCommand<Array<{ pid: number; name: string; memory_mb: number }>>('monitoring', 'processes');
+    return client.sendCommand<{ pid: number; name: string; memory_mb: number }[]>('monitoring', 'processes');
   }, [client]);
 
   const killProcess = useCallback((pid: number) => {
@@ -246,30 +301,29 @@ export function useAgentWS() {
     return client.sendCommand('clipboard', 'set', { text });
   }, [client]);
 
-  const uploadFile = useCallback(async (fileUri: string, fileName: string, mimeType: string = 'application/octet-stream') => {
-    if (!origin || !token) throw new Error('Not paired or offline');
-    const formData = new FormData();
-    formData.append('file', {
-      uri: fileUri,
-      name: fileName,
-      type: mimeType,
-    } as any);
-
-    const uploadUrl = `${origin}/api/v1/files/upload`;
-    const res = await fetch(uploadUrl, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-      body: formData,
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.message || 'File upload failed');
-    }
-    return res.json();
-  }, [origin, token]);
+  /**
+   * The agent has no file-transfer module, so there is no endpoint to call.
+   * Reject explicitly instead of probing a route that only answers 404 — a
+   * clear "not implemented" is honest, a silent network probe is not.
+   */
+  const uploadFile = useCallback(
+    (
+      fileUri: string,
+      fileName: string,
+      mimeType: string = 'application/octet-stream',
+    ): Promise<never> => {
+      // Parameters are kept so call sites stay valid; nothing is transmitted.
+      void fileUri;
+      void fileName;
+      void mimeType;
+      return Promise.reject(
+        new Error(
+          'File transfer is not available: this agent build has no file module.',
+        ),
+      );
+    },
+    [],
+  );
 
   return {
     client,

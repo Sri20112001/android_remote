@@ -23,7 +23,7 @@ export const MAX_DEVICE_NAME_LENGTH = 64;
  * SecureStore key for the persisted session (single key so origin, token
  * and device are written atomically and can never disagree).
  */
-export const SESSION_STORAGE_KEY = 'tuf.session.v1';
+export const SESSION_STORAGE_KEY = 'remotedeck.session.v1';
 
 /** mDNS service type the agent advertises (informational; unused yet). */
-export const MDNS_SERVICE_TYPE = '_tufremote._tcp';
+export const MDNS_SERVICE_TYPE = '_remotedeck._tcp';

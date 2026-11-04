@@ -53,7 +53,7 @@ export interface SessionValue {
   /** Liveness probe against the pending origin, pre-pairing. */
   probePending(): Promise<HealthResponse>;
   /** Confirm pairing (PIN from the pair screen); persists on success. */
-  pair(pin: string, metadata: PairingMetadata): Promise<void>;
+  pair(pin: string, metadata: PairingMetadata, overrideOrigin?: string): Promise<void>;
   /** Forget this device: wipe the stored session and return to connect. */
   forget(): Promise<void>;
 }
@@ -115,9 +115,10 @@ export function SessionProvider({ store, now, children }: SessionProviderProps) 
   }, [pending]);
 
   const pair = useCallback(
-    async (pin: string, metadata: PairingMetadata): Promise<void> => {
-      if (!pending) throw new Error('No agent selected.');
-      const client = new AgentClient({ origin: pending.origin });
+    async (pin: string, metadata: PairingMetadata, overrideOrigin?: string): Promise<void> => {
+      const targetOrigin = overrideOrigin ?? pending?.origin;
+      if (!targetOrigin) throw new Error('No agent selected.');
+      const client = new AgentClient({ origin: targetOrigin });
       const response = await client.confirmPairing({
         pin,
         name: metadata.name,
@@ -130,7 +131,7 @@ export function SessionProvider({ store, now, children }: SessionProviderProps) 
         throw new Error('Agent did not return a token.');
       }
       const session: PairedSession = {
-        origin: pending.origin,
+        origin: targetOrigin,
         token,
         device: response.device,
         pairedAt: (now ?? defaultIsoNow)(),

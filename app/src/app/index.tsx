@@ -1,69 +1,38 @@
 /**
- * Bootstrap route: shows a holding frame while the stored session loads,
+ * Bootstrap route: plays the boot sequence while the stored session loads,
  * then sends the user to the paired dashboard or the connect flow.
+ *
+ * The animation itself lives in `components/boot-sequence.tsx`; this file
+ * only decides when the screen is allowed to leave. A short floor keeps the
+ * brand frame from flashing for a single frame when the secure store answers
+ * instantly — it never delays a slow read, because the floor and the session
+ * load run in parallel and the screen leaves when **both** are done.
  */
 
 import { Redirect } from 'expo-router';
-import { ActivityIndicator, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
 
 import { useSession } from '@/auth/session';
+import { BootSequence } from '@/components/boot-sequence';
+
+/** Minimum time the boot frame stays visible (parallel with the session read). */
+const MIN_BOOT_MS = 450;
 
 export default function Index() {
   const { status } = useSession();
+  const [minElapsed, setMinElapsed] = useState(false);
 
-  if (status === 'loading') {
+  // Deferred: state is set from the timer callback, never in the effect body.
+  useEffect(() => {
+    const timer = setTimeout(() => setMinElapsed(true), MIN_BOOT_MS);
+    return () => clearTimeout(timer);
+  }, []);
+
+  if (status !== 'loading' && minElapsed) {
     return (
-      <View
-        style={{
-          flex: 1,
-          alignItems: 'center',
-          justifyContent: 'center',
-          backgroundColor: '#0B0E14',
-          gap: 16,
-        }}
-        accessibilityLabel="Loading TUF Remote"
-      >
-        {/* Brand mark */}
-        <View
-          style={{
-            width: 48,
-            height: 48,
-            borderRadius: 14,
-            backgroundColor: '#1E293B',
-            borderWidth: 1,
-            borderColor: '#334155',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <View
-            style={{
-              width: 14,
-              height: 14,
-              borderRadius: 3,
-              backgroundColor: '#CAF300',
-            }}
-          />
-        </View>
-
-        {/* Brand */}
-        <Text
-          style={{
-            fontSize: 16,
-            fontWeight: '800',
-            letterSpacing: 2,
-            color: '#F1F5F9',
-            fontFamily: 'JetBrains Mono',
-          }}
-        >
-          TUF REMOTE
-        </Text>
-
-        {/* Loading indicator */}
-        <ActivityIndicator color="#CAF300" size="small" />
-      </View>
+      <Redirect href={status === 'paired' ? '/(tabs)/trackpad' : '/connect'} />
     );
   }
 
-  return <Redirect href={status === 'paired' ? '/(tabs)/trackpad' : '/connect'} />;
+  return <BootSequence status={status} />;
 }

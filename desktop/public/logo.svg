@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <!-- Background Gradient -->
+    <radialGradient id="bgGlow" cx="50%" cy="40%" r="65%">
+      <stop offset="0%" stop-color="#1A2333" />
+      <stop offset="60%" stop-color="#0B0F17" />
+      <stop offset="100%" stop-color="#05070A" />
+    </radialGradient>
+
+    <!-- Border Accent Gradient -->
+    <linearGradient id="borderGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#CAF300" />
+      <stop offset="50%" stop-color="#00F0FF" />
+      <stop offset="100%" stop-color="#3B82F6" />
+    </linearGradient>
+
+    <!-- Citrus Neon Gradient -->
+    <linearGradient id="citrusGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#E2FF4F" />
+      <stop offset="100%" stop-color="#A6C900" />
+    </linearGradient>
+
+    <!-- Cyan Beam Gradient -->
+    <linearGradient id="cyanGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#00F0FF" />
+      <stop offset="100%" stop-color="#7000FF" />
+    </linearGradient>
+
+    <!-- Drop Glow Filter -->
+    <filter id="neonGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="12" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Outer Rounded Squircle Backing -->
+  <rect x="24" y="24" width="464" height="464" rx="108" fill="url(#bgGlow)" stroke="url(#borderGrad)" stroke-width="8" />
+
+  <!-- Subtle Internal Grid Pattern -->
+  <g opacity="0.12" stroke="#CAF300" stroke-width="1.5">
+    <line x1="96" y1="170" x2="416" y2="170" />
+    <line x1="96" y1="256" x2="416" y2="256" />
+    <line x1="96" y1="342" x2="416" y2="342" />
+    <line x1="170" y1="96" x2="170" y2="416" />
+    <line x1="256" y1="96" x2="256" y2="416" />
+    <line x1="342" y1="96" x2="342" y2="416" />
+  </g>
+
+  <!-- Decorative Corner Tactical Brackets -->
+  <path d="M 64 120 L 64 64 L 120 64" stroke="#CAF300" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" opacity="0.75" />
+  <path d="M 448 120 L 448 64 L 392 64" stroke="#CAF300" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" opacity="0.75" />
+  <path d="M 64 392 L 64 448 L 120 448" stroke="#00F0FF" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" opacity="0.75" />
+  <path d="M 448 392 L 448 448 L 392 448" stroke="#00F0FF" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" opacity="0.75" />
+
+  <!-- Remote Wave Arcs (Broadcasting Beam) -->
+  <path d="M 190 148 C 228 124 284 124 322 148" stroke="#CAF300" stroke-width="8" stroke-linecap="round" opacity="0.4" />
+  <path d="M 160 118 C 218 84 294 84 352 118" stroke="#CAF300" stroke-width="7" stroke-linecap="round" opacity="0.2" />
+
+  <!-- Central Workstation Deck Emblem: Interlocking 'R' and 'D' Deck -->
+  <g filter="url(#neonGlow)">
+    <!-- 'R' Stem and Bow -->
+    <path d="M 148 176 L 148 336" stroke="url(#citrusGrad)" stroke-width="32" stroke-linecap="round" />
+    <path d="M 148 176 H 236 C 274 176 296 198 296 230 C 296 262 274 284 236 284 H 148" stroke="url(#citrusGrad)" stroke-width="30" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+    <path d="M 226 284 L 294 336" stroke="url(#citrusGrad)" stroke-width="32" stroke-linecap="round" />
+
+    <!-- 'D' Loop (Offset Cybernetic Arc) -->
+    <path d="M 284 176 H 324 C 378 176 408 212 408 256 C 408 300 378 336 324 336 H 284" stroke="url(#cyanGrad)" stroke-width="26" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.9" />
+
+    <!-- Center Pulse Trackpad Node -->
+    <circle cx="256" cy="256" r="14" fill="#CAF300" />
+    <circle cx="256" cy="256" r="28" stroke="#00F0FF" stroke-width="4" stroke-dasharray="6 4" opacity="0.8" />
+  </g>
+
+  <!-- Bottom Tech Status Dot -->
+  <circle cx="256" cy="424" r="6" fill="#CAF300" />
+  <circle cx="236" cy="424" r="3" fill="#64748B" />
+  <circle cx="276" cy="424" r="3" fill="#64748B" />
+</svg>

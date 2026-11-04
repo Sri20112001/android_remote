@@ -39,7 +39,7 @@ func (s *Service) StartAdvertiser(port int) error {
 	hostname, _ := os.Hostname()
 	instanceName := s.cfg.Agent.Name
 	if instanceName == "" {
-		instanceName = "TUF Remote"
+		instanceName = "Remote Deck"
 	}
 
 	txtRecords := []string{
@@ -50,7 +50,7 @@ func (s *Service) StartAdvertiser(port int) error {
 
 	server, err := zeroconf.Register(
 		instanceName,
-		"_tufremote._tcp",
+		"_remotedeck._tcp",
 		"local.",
 		port,
 		txtRecords,
@@ -62,7 +62,7 @@ func (s *Service) StartAdvertiser(port int) error {
 	}
 
 	s.server = server
-	s.logger.Info("mDNS advertiser started", "service", "_tufremote._tcp", "instance", instanceName, "port", port, "host", hostname)
+	s.logger.Info("mDNS advertiser started", "service", "_remotedeck._tcp", "instance", instanceName, "port", port, "host", hostname)
 	return nil
 }
 

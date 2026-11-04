@@ -301,7 +301,7 @@ export default function SettingsScreen() {
 
           <View className="bg-[#101319] rounded-xl border border-[#282E38] p-3.5 gap-3">
             <Text className="text-zinc-400 text-[10.5px] font-mono leading-relaxed">
-              Beam documents, photos, or APKs directly into your workstation's Downloads folder over encrypted Wi-Fi.
+              Beam documents, photos, or APKs directly into your workstation&apos;s Downloads folder over encrypted Wi-Fi.
             </Text>
 
             <Pressable

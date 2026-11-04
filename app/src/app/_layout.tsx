@@ -1,22 +1,36 @@
 /**
- * Root layout: loads the brand fonts, mounts the session provider,
- * and declares the stack for the pairing flow.
+ * Root layout: loads the brand fonts, mounts the session provider, and
+ * declares the stack for the pairing flow.
  *
- * Uses a clean Native Cloud aesthetic instead of the cyberpunk theme.
+ * Visual direction: dark tactical console. Every surface, text and accent
+ * comes from `src/theme/tokens.ts`, which is mirrored by
+ * `tailwind.config.js`; this file only wires the navigation theme to the
+ * same values so the native stack background never flashes a light colour
+ * between screens.
  */
 
 // NativeWind: must be imported once here so Metro inlines the Tailwind CSS.
 import '../../global.css';
 
 import {
+  JetBrainsMono_400Regular,
+  JetBrainsMono_500Medium,
+  JetBrainsMono_700Bold,
+} from '@expo-google-fonts/jetbrains-mono';
+import {
   PlusJakartaSans_400Regular,
   PlusJakartaSans_500Medium,
   PlusJakartaSans_600SemiBold,
   PlusJakartaSans_700Bold,
 } from '@expo-google-fonts/plus-jakarta-sans';
+import {
+  Syne_700Bold,
+  Syne_800ExtraBold,
+} from '@expo-google-fonts/syne';
 
-import { DarkTheme, Stack, ThemeProvider } from 'expo-router';
+import { DarkTheme, Stack, ThemeProvider, usePathname } from 'expo-router';
 import { useFonts } from 'expo-font';
+import * as ScreenOrientation from 'expo-screen-orientation';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo } from 'react';
@@ -24,8 +38,29 @@ import { useEffect, useMemo } from 'react';
 import { CredentialStore } from '@/auth/credential-store';
 import { secureStoreBackend } from '@/auth/secure-backend';
 import { SessionProvider } from '@/auth/session';
+import { Color } from '@/theme/tokens';
 
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
+
+/**
+ * Keeps the app portrait everywhere except the keyboard tab, which is allowed
+ * to rotate so its matrix can use the wider landscape viewport. A tab screen
+ * cannot carry a per-screen `orientation` option (that is a native-stack
+ * feature), so the lock is applied at runtime instead.
+ */
+function OrientationGuard() {
+  const pathname = usePathname();
+  const keyboardFocused = pathname.endsWith('/keyboard');
+
+  useEffect(() => {
+    const request = keyboardFocused
+      ? ScreenOrientation.unlockAsync()
+      : ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+    request.catch(() => undefined);
+  }, [keyboardFocused]);
+
+  return null;
+}
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
@@ -33,6 +68,11 @@ export default function RootLayout() {
     PlusJakartaSans_500Medium,
     PlusJakartaSans_600SemiBold,
     PlusJakartaSans_700Bold,
+    Syne_700Bold,
+    Syne_800ExtraBold,
+    JetBrainsMono_400Regular,
+    JetBrainsMono_500Medium,
+    JetBrainsMono_700Bold,
   });
 
   const store = useMemo(
@@ -45,11 +85,12 @@ export default function RootLayout() {
       ...DarkTheme,
       colors: {
         ...DarkTheme.colors,
-        background: '#F8FAFC',
-        card: '#FFFFFF',
-        primary: '#64748B',
-        border: '#E2E8F0',
-        text: '#0F172A',
+        background: Color.bg,
+        card: Color.surface,
+        primary: Color.accent,
+        border: Color.border,
+        text: Color.text,
+        notification: Color.danger,
       },
     }),
     [],
@@ -75,12 +116,13 @@ export default function RootLayout() {
   return (
     <ThemeProvider value={theme}>
       <SessionProvider store={store}>
-        <StatusBar style="dark" />
+        <OrientationGuard />
+        <StatusBar style="light" />
         <Stack
           screenOptions={{
             headerShown: false,
             contentStyle: {
-              backgroundColor: '#F8FAFC',
+              backgroundColor: Color.bg,
             },
             animation: 'fade',
           }}

@@ -21,6 +21,18 @@ tmp/
 *.exe
 build-errors.log
 
+# Node & Web
+node_modules/
+dist/
+.expo/
+
+# Rust / Tauri
+target/
+src-tauri/target/
+desktop/src-tauri/target/
+desktop/dist/
+desktop/node_modules/
+
 # Editor / OS noise
 .vscode/
 .idea/

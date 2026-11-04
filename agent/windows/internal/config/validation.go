@@ -86,11 +86,11 @@ func securityProblems(sec SecurityConfig) []string {
 		problems = append(problems, "security.pairing.pin_ttl must not exceed 30m")
 	}
 
-	if sec.Pairing.MaxAttempts < 1 || sec.Pairing.MaxAttempts > 20 {
-		problems = append(problems, "security.pairing.max_attempts must be between 1 and 20")
+	if sec.Pairing.MaxAttempts < 0 || sec.Pairing.MaxAttempts > 1000000 {
+		problems = append(problems, "security.pairing.max_attempts must be non-negative")
 	}
-	if sec.Pairing.MaxActiveSessions < 1 || sec.Pairing.MaxActiveSessions > 20 {
-		problems = append(problems, "security.pairing.max_active_sessions must be between 1 and 20")
+	if sec.Pairing.MaxActiveSessions < 0 || sec.Pairing.MaxActiveSessions > 1000000 {
+		problems = append(problems, "security.pairing.max_active_sessions must be non-negative")
 	}
 
 	grace := sec.Pairing.TokenGracePeriod.Duration()
@@ -98,8 +98,8 @@ func securityProblems(sec SecurityConfig) []string {
 		problems = append(problems, "security.pairing.token_grace_period must be between 0 and 10m")
 	}
 
-	if sec.RateLimit.ConfirmPerMinute < 1 || sec.RateLimit.ConfirmPerMinute > 1000 {
-		problems = append(problems, "security.rate_limit.confirm_per_minute must be between 1 and 1000")
+	if sec.RateLimit.ConfirmPerMinute < 0 || sec.RateLimit.ConfirmPerMinute > 100000 {
+		problems = append(problems, "security.rate_limit.confirm_per_minute must be non-negative")
 	}
 
 	if len(sec.AllowedHosts) > 32 {

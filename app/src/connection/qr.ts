@@ -28,7 +28,7 @@ export function parseQrData(data: string): QrParseResult {
     try {
       parsed = JSON.parse(trimmed);
     } catch {
-      return { kind: 'error', reason: 'QR code is not a valid TUF Remote payload.' };
+      return { kind: 'error', reason: 'QR code is not a valid Remote Deck payload.' };
     }
     const checked = validatePayload(parsed);
     if ('reason' in checked) {
@@ -50,7 +50,7 @@ export function parseQrData(data: string): QrParseResult {
   if (asAddress.ok) {
     return { kind: 'origin', origin: asAddress.origin };
   }
-  return { kind: 'error', reason: 'QR code is not a TUF Remote address or payload.' };
+  return { kind: 'error', reason: 'QR code is not a Remote Deck address or payload.' };
 }
 
 type PayloadCheck = QrPayload | { reason: string };
@@ -121,12 +121,14 @@ function rankAddress(address: string): number {
   const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(address);
   if (v4) {
     const [a, b] = [Number(v4[1]), Number(v4[2])];
+    if (a === 169 && b === 254) {
+      return 0; // link-local APIPA: unusable over Wi-Fi
+    }
     const isPrivate =
       a === 10 ||
       (a === 172 && b >= 16 && b <= 31) ||
-      (a === 192 && b === 168) ||
-      (a === 169 && b === 254); // link-local: better than nothing, still local
-    return isPrivate ? 3 : 2;
+      (a === 192 && b === 168);
+    return isPrivate ? 4 : 2;
   }
   if (address.includes(':')) {
     const lower = address.toLowerCase();

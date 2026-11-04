@@ -2,10 +2,8 @@
  * Status pill: compact state indicator.
  * Tone is communicated through both color and text.
  *
- * Native Cloud design:
- * - Soft tinted status indicators
- * - Rounded pill shape
- * - Minimal status dot
+ * Dark console design: tinted surface + matching hairline border, with the
+ * label in the mono face so it lines up with every other micro-label.
  */
 
 import { Text, View } from 'react-native';
@@ -22,24 +20,24 @@ const toneStyles: Record<
   { container: string; dot: string; text: string }
 > = {
   ok: {
-    container: 'border-emerald-200 bg-emerald-50',
-    dot: 'bg-emerald-500',
-    text: 'text-emerald-700',
+    container: 'border-accent/40 bg-accent/10',
+    dot: 'bg-accent',
+    text: 'text-accent',
   },
   warn: {
-    container: 'border-amber-200 bg-amber-50',
-    dot: 'bg-amber-500',
-    text: 'text-amber-700',
+    container: 'border-warn/40 bg-warn/10',
+    dot: 'bg-warn',
+    text: 'text-warn',
   },
   danger: {
-    container: 'border-red-200 bg-red-50',
-    dot: 'bg-red-500',
-    text: 'text-red-700',
+    container: 'border-danger/40 bg-danger/10',
+    dot: 'bg-danger',
+    text: 'text-danger',
   },
   neutral: {
-    container: 'border-slate-200 bg-slate-50',
-    dot: 'bg-slate-400',
-    text: 'text-slate-600',
+    container: 'border-border bg-surface',
+    dot: 'bg-text-faint',
+    text: 'text-text-dim',
   },
 };
 
@@ -53,7 +51,7 @@ export function Pill({ label, tone = 'neutral' }: PillProps) {
       <View className={`h-1.5 w-1.5 rounded-full ${styles.dot}`} />
 
       <Text
-        className={`text-[10px] font-bold uppercase tracking-wider ${styles.text}`}
+        className={`font-mono-bold text-[9px] uppercase tracking-[1.4px] ${styles.text}`}
         numberOfLines={1}
       >
         {label}

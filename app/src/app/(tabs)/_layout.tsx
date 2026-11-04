@@ -24,6 +24,11 @@ function getTabConfig(name: string, isFocused: boolean): {
         icon: isFocused ? 'gesture-tap-box' : 'gesture-tap-button',
         label: 'PAD',
       };
+    case 'keyboard':
+      return {
+        icon: isFocused ? 'keyboard' : 'keyboard-outline',
+        label: 'KEYS',
+      };
     case 'media':
       return {
         icon: isFocused ? 'tune-vertical' : 'tune-vertical-variant',
@@ -176,6 +181,7 @@ export default function TabsLayout() {
       }}
     >
       <Tabs.Screen name="trackpad" options={{ title: 'TRACKPAD' }} />
+      <Tabs.Screen name="keyboard" options={{ title: 'KEYBOARD' }} />
       <Tabs.Screen name="media" options={{ title: 'STUDIO' }} />
       <Tabs.Screen name="telemetry" options={{ title: 'TELEMETRY' }} />
       <Tabs.Screen name="power" options={{ title: 'POWER' }} />

@@ -7,7 +7,7 @@ import { originFromPayload, parseQrData } from '@/connection/qr';
 
 function payload(overrides: Partial<QrPayload> = {}): QrPayload {
   return {
-    agent_name: 'TUF Remote',
+    agent_name: 'Remote Deck',
     version: '0.1.0',
     hostname: 'WIN11-PC',
     ip_addresses: ['192.168.1.104'],
@@ -29,7 +29,7 @@ describe('parseQrData', () => {
     if (result.kind !== 'payload') return;
     expect(result.origin).toBe('http://192.168.1.104:8765');
     expect(result.pin).toBe('492815');
-    expect(result.payload.agent_name).toBe('TUF Remote');
+    expect(result.payload.agent_name).toBe('Remote Deck');
   });
 
   it('uses https when the agent reports TLS', () => {

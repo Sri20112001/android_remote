@@ -11,6 +11,7 @@
 
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import * as Device from 'expo-device';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -18,6 +19,7 @@ import {
   Animated,
   Easing,
   Linking,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -50,6 +52,32 @@ function messageOf(error: unknown): string {
   return 'Something went wrong.';
 }
 
+function defaultDeviceName(): string {
+  const parts = [Device.manufacturer, Device.modelName].filter(
+    (part): part is string =>
+      typeof part === 'string' && part.trim() !== '',
+  );
+
+  const name = parts.join(' ').trim();
+  return name === '' ? 'Android device' : name;
+}
+
+function getDeviceMetadata() {
+  return {
+    name: defaultDeviceName(),
+    model:
+      [Device.manufacturer, Device.modelName]
+        .filter(
+          (part): part is string =>
+            typeof part === 'string' && part.trim() !== '',
+        )
+        .join(' ')
+        .trim() || undefined,
+    osVersion: Device.osVersion ?? undefined,
+    platform: Platform.OS,
+  };
+}
+
 export default function ConnectScreen() {
   const router = useRouter();
   const session = useSession();
@@ -62,8 +90,19 @@ export default function ConnectScreen() {
   const [probing, setProbing] = useState(false);
   const [torch, setTorch] = useState(false);
   const [reduceMotion, setReduceMotion] = useState(false);
+  const [scanningActive, setScanningActive] = useState(true);
 
   const scanLocked = useRef(false);
+  const isProcessing = useRef(false);
+
+  const resetScanner = useCallback(() => {
+    scanLocked.current = false;
+    isProcessing.current = false;
+    setTarget(null);
+    setError(null);
+    setProbing(false);
+    setScanningActive(true);
+  }, []);
   // An Animated.Value is a render-stable object, not a ref: memoize it.
   const scanLine = useMemo(() => new Animated.Value(0), []);
 
@@ -106,22 +145,51 @@ export default function ConnectScreen() {
   }, [reduceMotion, scanLine]);
 
   const onBarcodeScanned = useCallback(
-    ({ data }: { data: string }) => {
-      if (scanLocked.current) return;
+    async ({ data }: { data: string }) => {
+      // Immediate synchronous drop if locked or already handling a code
+      if (scanLocked.current || isProcessing.current) return;
+
+      // Lock synchronously BEFORE async parsing or network dispatch
+      scanLocked.current = true;
+      isProcessing.current = true;
+      setScanningActive(false);
+
       const result = parseQrData(data);
       if (result.kind === 'error') {
         setError(result.reason);
+        isProcessing.current = false;
+        // Do NOT auto-unlock in a loop; require explicit user reset or re-scan tap
         return;
       }
-      scanLocked.current = true;
+
       setError(null);
       if (result.kind === 'payload') {
         setTarget({ origin: result.origin, pin: result.pin, agentName: result.payload.agent_name });
+        // If a PIN is present in the QR payload, auto-pair and proceed immediately to the home screen
+        if (result.pin) {
+          setProbing(true);
+          try {
+            session.beginConnect(result.origin, result.pin);
+            await session.pair(result.pin, getDeviceMetadata(), result.origin);
+            router.replace('/(tabs)/trackpad');
+            return;
+          } catch (pairError) {
+            setError(messageOf(pairError));
+            // Keep scanLocked = true and scanningActive = false!
+            // Do NOT auto-unlock here, or the camera will fire 30-60 requests per second.
+          } finally {
+            setProbing(false);
+            isProcessing.current = false;
+          }
+        } else {
+          isProcessing.current = false;
+        }
       } else {
         setTarget({ origin: result.origin });
+        isProcessing.current = false;
       }
     },
-    [],
+    [session, router],
   );
 
   const continueToPairing = useCallback(async () => {
@@ -149,7 +217,12 @@ export default function ConnectScreen() {
     try {
       await new AgentClient({ origin }).getHealth();
       session.beginConnect(origin, pin);
-      router.push('/pair');
+      if (pin) {
+        await session.pair(pin, getDeviceMetadata(), origin);
+        router.replace('/(tabs)/trackpad');
+      } else {
+        router.push('/pair');
+      }
     } catch (probeError) {
       setError(messageOf(probeError));
     } finally {
@@ -192,8 +265,8 @@ export default function ConnectScreen() {
           style={StyleSheet.absoluteFill}
           facing="back"
           enableTorch={torch}
-          barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-          onBarcodeScanned={onBarcodeScanned}
+          barcodeScannerSettings={scanningActive ? { barcodeTypes: ['qr'] } : undefined}
+          onBarcodeScanned={scanningActive ? onBarcodeScanned : undefined}
         />
         <View style={styles.cameraOverlay} pointerEvents="none">
           <View style={styles.reticle}>
@@ -217,7 +290,13 @@ export default function ConnectScreen() {
               ]}
             />
           </View>
-          <Text style={styles.cameraHint}>ALIGN THE QR CODE INSIDE THE FRAME</Text>
+          <Text style={styles.cameraHint}>
+            {probing
+              ? 'CONNECTING AND PAIRING...'
+              : !scanningActive
+              ? 'CODE CAPTURED — TAP RESET TO RESCAN'
+              : 'ALIGN THE QR CODE INSIDE THE FRAME'}
+          </Text>
         </View>
         <PressableTorch
           enabled={torch}
@@ -250,13 +329,20 @@ export default function ConnectScreen() {
           label="Scan QR"
           icon="qrcode-scan"
           selected={tab === 'scan'}
-          onPress={() => setTab('scan')}
+          onPress={() => {
+            setTab('scan');
+            resetScanner();
+          }}
         />
         <TabButton
           label="Manual"
           icon="keyboard-outline"
           selected={tab === 'manual'}
-          onPress={() => setTab('manual')}
+          onPress={() => {
+            setTab('manual');
+            setScanningActive(false);
+            setError(null);
+          }}
         />
       </View>
 
@@ -292,7 +378,7 @@ export default function ConnectScreen() {
             {target.pin !== undefined && <Pill label="PIN detected" tone="ok" />}
           </View>
           <Text style={styles.targetName} numberOfLines={1}>
-            {target.agentName ?? 'TUF Remote agent'}
+            {target.agentName ?? 'Remote Deck agent'}
           </Text>
           <Text style={styles.targetOrigin} numberOfLines={1} ellipsizeMode="middle">
             {target.origin}
@@ -301,16 +387,24 @@ export default function ConnectScreen() {
             label="Scan again"
             variant="ghost"
             icon="refresh"
-            onPress={() => {
-              scanLocked.current = false;
-              setTarget(null);
-              setError(null);
-            }}
+            onPress={resetScanner}
           />
         </Card>
       )}
 
-      {error !== null && <Banner message={error} />}
+      {error !== null && (
+        <View style={{ gap: Spacing.xs }}>
+          <Banner message={error} />
+          {tab === 'scan' && (
+            <Button
+              label="Scan again"
+              variant="ghost"
+              icon="refresh"
+              onPress={resetScanner}
+            />
+          )}
+        </View>
+      )}
 
       <Button
         label="Continue"

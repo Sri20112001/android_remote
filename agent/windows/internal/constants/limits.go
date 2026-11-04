@@ -39,11 +39,11 @@ const (
 	// DefaultPINTTL bounds a pairing session (configurable).
 	DefaultPINTTL = 5 * time.Minute
 	// DefaultPINAttempts is the number of wrong PINs a session tolerates
-	// before it is burned (configurable).
-	DefaultPINAttempts = 5
+	// before it is burned (0 for unlimited).
+	DefaultPINAttempts = 0
 	// DefaultMaxPairingSessions caps concurrently open pairing sessions
-	// (configurable).
-	DefaultMaxPairingSessions = 3
+	// (0 for unlimited, or auto-evicts oldest when full).
+	DefaultMaxPairingSessions = 10
 	// TokenBytes is the entropy of a device token (256 bits).
 	TokenBytes = 32
 	// TokenPrefixLength is how many leading characters of a token are kept
@@ -53,8 +53,8 @@ const (
 	// in-flight requests do not fail (configurable).
 	DefaultTokenGracePeriod = 30 * time.Second
 	// DefaultConfirmRateLimit caps pairing confirmations per client IP per
-	// minute (configurable).
-	DefaultConfirmRateLimit = 20
+	// minute (0 disables rate limiting).
+	DefaultConfirmRateLimit = 0
 	// TokenLastUsedStaleness throttles last-seen writes to at most one per
 	// window per token.
 	TokenLastUsedStaleness = time.Minute

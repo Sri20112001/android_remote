@@ -12,9 +12,27 @@ import (
 var (
 	user32DLL = windows.NewLazySystemDLL("user32.dll")
 
-	procMouseEvent = user32DLL.NewProc("mouse_event")
-	procKeybdEvent = user32DLL.NewProc("keybd_event")
+	procMouseEvent       = user32DLL.NewProc("mouse_event")
+	procKeybdEvent       = user32DLL.NewProc("keybd_event")
+	procOpenInputDesktop = user32DLL.NewProc("OpenInputDesktop")
+	procSetThreadDesktop = user32DLL.NewProc("SetThreadDesktop")
+	procCloseDesktop     = user32DLL.NewProc("CloseDesktop")
 )
+
+// ensureInputDesktop attaches the calling thread to the currently active input desktop.
+// This prevents ERROR_ACCESS_DENIED on Windows during UAC elevation, lock screen transitions,
+// and background goroutine execution.
+func ensureInputDesktop() {
+	if procOpenInputDesktop.Find() != nil || procSetThreadDesktop.Find() != nil {
+		return
+	}
+	// 0x1FF corresponds to MAXIMUM_ALLOWED / GENERIC_ALL
+	hDesk, _, _ := procOpenInputDesktop.Call(0, 0, 0x1FF)
+	if hDesk != 0 {
+		procSetThreadDesktop.Call(hDesk)
+		procCloseDesktop.Call(hDesk)
+	}
+}
 
 const (
 	mouseEventfMove       = 0x0001
@@ -75,6 +93,18 @@ var keyMap = map[string]byte{
 	"f10":              0x79,
 	"f11":              0x7A,
 	"f12":              0x7B,
+	"capslock":         0x14,
+	"`":                0xC0,
+	"-":                0xBD,
+	"=":                0xBB,
+	"[":                0xDB,
+	"]":                0xDD,
+	"\\":               0xDC,
+	";":                0xBA,
+	"'":                0xDE,
+	",":                0xBC,
+	".":                0xBE,
+	"/":                0xBF,
 }
 
 // WindowsInjector implements Injector on Windows using Win32 API.
@@ -86,17 +116,20 @@ func NewInjector() *WindowsInjector {
 }
 
 func (inj *WindowsInjector) MouseMove(dx, dy int) error {
+	ensureInputDesktop()
 	procMouseEvent.Call(uintptr(mouseEventfMove), uintptr(dx), uintptr(dy), 0, 0)
 	return nil
 }
 
 func (inj *WindowsInjector) MouseMoveAbsolute(x, y int) error {
+	ensureInputDesktop()
 	// Normalized absolute coordinates (0 to 65535)
 	procMouseEvent.Call(uintptr(mouseEventfMove|mouseEventfAbsolute), uintptr(x), uintptr(y), 0, 0)
 	return nil
 }
 
 func (inj *WindowsInjector) MouseDown(button string) error {
+	ensureInputDesktop()
 	var flag uintptr
 	switch strings.ToLower(button) {
 	case "right":
@@ -111,6 +144,7 @@ func (inj *WindowsInjector) MouseDown(button string) error {
 }
 
 func (inj *WindowsInjector) MouseUp(button string) error {
+	ensureInputDesktop()
 	var flag uintptr
 	switch strings.ToLower(button) {
 	case "right":
@@ -139,6 +173,7 @@ func (inj *WindowsInjector) MouseClick(button string, double bool) error {
 }
 
 func (inj *WindowsInjector) MouseScroll(dy int) error {
+	ensureInputDesktop()
 	procMouseEvent.Call(uintptr(mouseEventfWheel), 0, 0, uintptr(dy), 0)
 	return nil
 }
@@ -161,6 +196,7 @@ func resolveVK(key string) byte {
 }
 
 func (inj *WindowsInjector) KeyDown(key string) error {
+	ensureInputDesktop()
 	vk := resolveVK(key)
 	if vk != 0 {
 		procKeybdEvent.Call(uintptr(vk), 0, 0, 0)
@@ -169,6 +205,7 @@ func (inj *WindowsInjector) KeyDown(key string) error {
 }
 
 func (inj *WindowsInjector) KeyUp(key string) error {
+	ensureInputDesktop()
 	vk := resolveVK(key)
 	if vk != 0 {
 		procKeybdEvent.Call(uintptr(vk), 0, uintptr(keyEventfKeyUp), 0)
@@ -177,6 +214,7 @@ func (inj *WindowsInjector) KeyUp(key string) error {
 }
 
 func (inj *WindowsInjector) KeyTap(key string, modifiers []string) error {
+	ensureInputDesktop()
 	// Press modifiers
 	for _, m := range modifiers {
 		_ = inj.KeyDown(m)
@@ -197,6 +235,7 @@ func (inj *WindowsInjector) KeyTap(key string, modifiers []string) error {
 }
 
 func (inj *WindowsInjector) TypeText(text string) error {
+	ensureInputDesktop()
 	for _, r := range text {
 		procKeybdEvent.Call(0, uintptr(r), uintptr(keyEventfUnicode), 0)
 		procKeybdEvent.Call(0, uintptr(r), uintptr(keyEventfUnicode|keyEventfKeyUp), 0)

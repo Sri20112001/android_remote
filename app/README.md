@@ -1,6 +1,6 @@
-# TUF Remote — Mobile Client (Expo / React Native)
+# Remote Deck — Mobile Client (Expo / React Native)
 
-React Native client for TUF Remote built with Expo (SDK 58). Connects to the host Windows agent over the local area network (LAN) to provide tactile, low-latency control over cursor, keyboard macros, audio bus, process monitoring, power states, and file transfer.
+React Native client for Remote Deck built with Expo (SDK 58). Connects to the host Windows agent over the local area network (LAN) to provide tactile, low-latency control over cursor, keyboard macros, audio bus, process monitoring, power states, and file transfer.
 
 ---
 

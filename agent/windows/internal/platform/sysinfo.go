@@ -53,8 +53,8 @@ func collectPortable(ctx context.Context) (Info, error) {
 	ips := make([]string, 0, 4)
 	for _, addr := range addrs {
 		ipnet, ok := addr.(*net.IPNet)
-		if !ok || ipnet.IP.To4() == nil || !ipnet.IP.IsGlobalUnicast() {
-			continue // keep IPv4 global unicast only: no loopback, no link-local
+		if !ok || ipnet.IP.To4() == nil || !ipnet.IP.IsGlobalUnicast() || ipnet.IP.IsLinkLocalUnicast() {
+			continue // keep IPv4 global unicast only: no loopback, no link-local (169.254.*)
 		}
 		ips = append(ips, ipnet.IP.String())
 	}

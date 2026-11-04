@@ -50,13 +50,31 @@ func Guard(logger *slog.Logger, allowed ...string) gin.HandlerFunc {
 				return
 			}
 			u, err := url.Parse(origin)
-			if err != nil || !strings.EqualFold(u.Host, c.Request.Host) {
+			if err != nil {
+				rejectBrowserRequest(c, logger, "invalid origin", crossOriginMessage)
+				return
+			}
+			if isLocalOrigin(u) || strings.EqualFold(u.Host, c.Request.Host) {
+				c.Header("Access-Control-Allow-Origin", origin)
+				c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+				c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Request-ID")
+				if c.Request.Method == "OPTIONS" {
+					c.AbortWithStatus(204)
+					return
+				}
+			} else {
 				rejectBrowserRequest(c, logger, "origin mismatch", crossOriginMessage)
 				return
 			}
 		}
 		c.Next()
 	}
+}
+
+// isLocalOrigin reports whether an origin belongs to the local machine's webview/desktop client.
+func isLocalOrigin(u *url.URL) bool {
+	h := strings.ToLower(u.Hostname())
+	return h == "localhost" || h == "127.0.0.1" || h == "tauri.localhost" || u.Scheme == "tauri"
 }
 
 // crossOriginMessage is what every cross-origin rejection shows the

@@ -1,15 +1,17 @@
 /**
  * Labeled text field with inline error/hint.
  *
- * Native Cloud design:
- * - Always-visible labels
- * - Soft neutral input surfaces
- * - Subtle borders and rounded corners
+ * Dark console design:
+ * - Always-visible mono micro-label
+ * - Recessed input surface with a hairline border
+ * - Lime caret so focus is visible without a light-mode outline
  * - Clear error and helper states
  * - 50dp minimum touch target
  */
 
 import { Text, TextInput, View, type TextInputProps } from 'react-native';
+
+import { Color } from '@/theme/tokens';
 
 export interface FieldProps extends Omit<TextInputProps, 'style'> {
   label: string;
@@ -32,7 +34,7 @@ export function Field({
     <View className="gap-2">
       {/* Always-visible label */}
       <Text
-        className="text-sm font-semibold text-slate-700"
+        className="font-mono-medium text-[10px] uppercase tracking-[1.6px] text-text-dim"
         numberOfLines={1}
       >
         {label}
@@ -44,17 +46,17 @@ export function Field({
           min-h-[50px]
           rounded-xl
           border
-          bg-white
+          bg-surface
           px-4
           py-3
           text-[15px]
-          text-slate-900
+          text-text
           ${mono ? 'font-mono text-base tracking-wide' : ''}
           ${multiline ? 'min-h-24 text-top' : ''}
-          ${hasError ? 'border-red-400' : 'border-slate-200'}
+          ${hasError ? 'border-danger' : 'border-border'}
         `}
-        placeholderTextColor="#94A3B8"
-        selectionColor="#64748B"
+        placeholderTextColor={Color.textFaint}
+        selectionColor={Color.accent}
         accessibilityLabel={label}
         multiline={multiline}
         textAlignVertical={multiline ? 'top' : 'center'}
@@ -64,13 +66,13 @@ export function Field({
       {/* Error or helper text */}
       {error ? (
         <Text
-          className="text-[13px] leading-[18px] text-red-600"
+          className="text-[13px] leading-[18px] text-danger"
           accessibilityRole="alert"
         >
           {error}
         </Text>
       ) : hint ? (
-        <Text className="text-[13px] leading-[18px] text-slate-500">
+        <Text className="text-[13px] leading-[18px] text-text-faint">
           {hint}
         </Text>
       ) : null}

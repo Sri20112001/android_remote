@@ -30,11 +30,10 @@ func TestValidate(t *testing.T) {
 		{"bad log format", func(c *config.Config) { c.Logging.Format = "xml" }, "logging.format"},
 		{"zero pin ttl", func(c *config.Config) { c.Security.Pairing.PINTTL = 0 }, "security.pairing.pin_ttl"},
 		{"absurd pin ttl", func(c *config.Config) { c.Security.Pairing.PINTTL = config.Duration(time.Hour) }, "security.pairing.pin_ttl"},
-		{"zero pin attempts", func(c *config.Config) { c.Security.Pairing.MaxAttempts = 0 }, "security.pairing.max_attempts"},
-		{"too many pin attempts", func(c *config.Config) { c.Security.Pairing.MaxAttempts = 21 }, "security.pairing.max_attempts"},
-		{"zero sessions", func(c *config.Config) { c.Security.Pairing.MaxActiveSessions = 0 }, "security.pairing.max_active_sessions"},
+		{"negative pin attempts", func(c *config.Config) { c.Security.Pairing.MaxAttempts = -1 }, "security.pairing.max_attempts"},
+		{"negative sessions", func(c *config.Config) { c.Security.Pairing.MaxActiveSessions = -1 }, "security.pairing.max_active_sessions"},
 		{"negative grace", func(c *config.Config) { c.Security.Pairing.TokenGracePeriod = -1 }, "security.pairing.token_grace_period"},
-		{"zero confirm limit", func(c *config.Config) { c.Security.RateLimit.ConfirmPerMinute = 0 }, "security.rate_limit.confirm_per_minute"},
+		{"negative confirm limit", func(c *config.Config) { c.Security.RateLimit.ConfirmPerMinute = -1 }, "security.rate_limit.confirm_per_minute"},
 	}
 
 	for _, tc := range cases {

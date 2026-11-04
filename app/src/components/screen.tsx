@@ -1,5 +1,5 @@
 /**
- * Screen shell: light Native Cloud background + safe-area handling.
+ * Screen shell: dark console background + safe-area handling.
  * `scroll` wraps content in a ScrollView tuned for forms (keyboard stays
  * out of the way of the focused field and taps are not swallowed).
  */
@@ -28,7 +28,7 @@ export function Screen({ children, scroll = false, style }: ScreenProps) {
   if (!scroll) {
     return (
       <SafeAreaView
-        className="flex-1 bg-slate-50"
+        className="flex-1 bg-bg"
         edges={['top', 'bottom']}>
         <View
           className="flex-1 gap-6 px-5 pt-4"
@@ -41,7 +41,7 @@ export function Screen({ children, scroll = false, style }: ScreenProps) {
 
   return (
     <SafeAreaView
-      className="flex-1 bg-slate-50"
+      className="flex-1 bg-bg"
       edges={['top', 'bottom']}>
       <KeyboardAvoidingView
         className="flex-1"

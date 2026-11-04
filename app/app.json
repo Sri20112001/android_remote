@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "TUF Remote",
-    "slug": "tuf-remote",
+    "name": "Remote Deck",
+    "slug": "remote-deck",
     "version": "0.1.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/images/icon.png",
-    "scheme": "tufremote",
+    "scheme": "remotedeck",
     "userInterfaceStyle": "dark",
     "ios": {
       "icon": "./assets/expo.icon",
@@ -15,7 +15,7 @@
       "supportsTablet": true
     },
     "android": {
-      "package": "com.tufremote.app",
+      "package": "com.remotedeck.app",
       "adaptiveIcon": {
         "backgroundColor": "#101319",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -42,7 +42,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow TUF Remote to scan the pairing QR code shown on your PC"
+          "cameraPermission": "Allow Remote Deck to scan the pairing QR code shown on your PC"
         }
       ]
     ],

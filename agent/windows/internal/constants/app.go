@@ -6,7 +6,7 @@ package constants
 
 const (
 	// AppName is the human-readable name of the application.
-	AppName = "TUF Remote"
+	AppName = "Remote Deck"
 	// AppVersion is the semantic version of the agent.
 	AppVersion = "0.1.0"
 	// DefaultPort is the TCP port the HTTP server listens on when no

@@ -43,22 +43,62 @@ func TestCreateEnforcesCapacityAndPurgesExpired(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first: %v", err)
 	}
-	if _, err := store.Create(now); err != nil {
+	if _, err := store.Create(now.Add(time.Second)); err != nil {
 		t.Fatalf("second: %v", err)
 	}
-	if _, err := store.Create(now); !errors.Is(err, pairing.ErrTooManySessions) {
-		t.Fatalf("third: err = %v, want ErrTooManySessions", err)
+	// Third session creation evicts the oldest session ('first') so capacity is bounded
+	// and pairing creation never fails with an exceed limit error.
+	third, err := store.Create(now.Add(2 * time.Second))
+	if err != nil {
+		t.Fatalf("third should succeed by evicting oldest: %v", err)
+	}
+	if count := store.ActiveCount(now.Add(2 * time.Second)); count != 2 {
+		t.Fatalf("active count must be capped at 2, got %d", count)
+	}
+	// 'first' should be gone because it was evicted.
+	if _, err := store.Consume(first.PIN, now.Add(2*time.Second)); !errors.Is(err, pairing.ErrPINInvalid) {
+		t.Errorf("evicted session PIN should be invalid, got %v", err)
+	}
+	// 'third' should still be valid.
+	if _, err := store.Consume(third.PIN, now.Add(2*time.Second)); err != nil {
+		t.Errorf("third session PIN should be valid, got %v", err)
 	}
 
-	// After the first session expires, capacity frees up again.
-	later := now.Add(2 * time.Minute)
+	// After the remaining sessions expire, capacity drops to 0.
+	later := now.Add(5 * time.Minute)
 	if store.ActiveCount(later) != 0 {
 		t.Fatalf("expired sessions must be purged, count = %d", store.ActiveCount(later))
 	}
 	if _, err := store.Create(later); err != nil {
 		t.Fatalf("create after purge: %v", err)
 	}
-	_ = first
+}
+
+func TestConsumeWithUnlimitedAttemptsDoesNotBurnSession(t *testing.T) {
+	// maxAttempts = 0 means unlimited attempts
+	store := pairing.NewSessionStore(time.Minute, 0, 3)
+	now := time.Now()
+
+	sess, err := store.Create(now)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	wrong := differ(sess.PIN)
+	for attempt := 1; attempt <= 20; attempt++ {
+		_, err := store.Consume(wrong, now)
+		if !errors.Is(err, pairing.ErrPINInvalid) {
+			t.Fatalf("attempt %d: err = %v, want ErrPINInvalid", attempt, err)
+		}
+	}
+	// Session must NOT be burned despite 20 wrong PIN attempts.
+	if got := store.ActiveCount(now); got != 1 {
+		t.Errorf("session must still be active when maxAttempts=0, got active = %d", got)
+	}
+	// Correct PIN still succeeds.
+	if _, err := store.Consume(sess.PIN, now); err != nil {
+		t.Errorf("correct PIN should succeed after wrong attempts: %v", err)
+	}
 }
 
 func TestConsumeMatchesCorrectPINOnce(t *testing.T) {

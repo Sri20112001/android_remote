@@ -3,19 +3,19 @@ import {
   View,
   Text,
   TouchableOpacity,
-  TextInput,
   PanResponder,
   GestureResponderEvent,
   PanResponderGestureState,
   Animated,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as Clipboard from 'expo-clipboard';
 import { Gyroscope } from 'expo-sensors';
 import { useAgentWS } from '@/api/use-agent-ws';
 import { useTabBarClearance } from '@/hooks/use-tab-bar-clearance';
 import { triggerHaptic } from '@/utils/haptics';
+import { takeWheelNotches } from '@/utils/scroll-notch';
 import { MacroDeck } from '@/components/macro-deck';
 
 /**
@@ -54,22 +54,86 @@ const latest: {
  */
 const HOLD_TO_DRAG_MS = 300;
 
-/**
- * Windows reports wheel motion in multiples of WHEEL_DELTA (120). Most
- * applications integer-divide the incoming delta by 120, so anything smaller
- * is silently dropped — which is exactly why raw finger-pixel deltas
- * (values like 6 or 18) scrolled nothing at all.
- */
-const WHEEL_DELTA = 120;
-
 /** Finger travel is amplified by this much before it moves the cursor. */
 const POINTER_GAIN = 1.6;
 
 /** Finger pixels to wheel units: 20px of travel equals one 120-unit notch. */
 const WHEEL_UNITS_PER_PX = 6;
 
+/** Tolerance for finger wobble during a tap (Beckon tap-slop filter). */
+const TAP_SLOP_PX = 12;
+
+/** Mutable per-gesture bookkeeping for the palm-rest pad. */
+type PadGesture = {
+  startPos: { x: number; y: number };
+  lastPos: { x: number; y: number };
+  maxFingers: number;
+  scrollVelocity: number;
+  accumX: number;
+  accumY: number;
+  touchStartTime: number;
+  touchMoved: boolean;
+  lastScrollY: number;
+  wheelMoved: boolean;
+  wheelStartTime: number;
+  /** One-finger moves coalesced into a single frame per display frame. */
+  moveX: number;
+  moveY: number;
+  moveScheduled: boolean;
+  /** Press-and-hold-to-drag timer, and whether it has already fired. */
+  holdTimer: ReturnType<typeof setTimeout> | null;
+  dragging: boolean;
+  /** Sub-notch wheel travel carried over to the next gesture. */
+  scrollRemainder: number;
+};
+
+/**
+ * Accumulates wheel travel and dispatches only whole WHEEL_DELTA notches.
+ *
+ * Raw finger-pixel deltas (6, 18, …) are below one notch, and Windows apps
+ * integer-divide the incoming delta, so they scrolled nothing at all.
+ */
+function queueScroll(gesture: PadGesture, units: number): void {
+  const step = takeWheelNotches(gesture.scrollRemainder, units);
+  gesture.scrollRemainder = step.remainder;
+  if (step.delta !== 0) latest.sendMouseScroll(step.delta);
+}
+
+function cancelHoldDrag(gesture: PadGesture): void {
+  if (gesture.holdTimer !== null) {
+    clearTimeout(gesture.holdTimer);
+    gesture.holdTimer = null;
+  }
+}
+
+/**
+ * Arms the left button once the finger has rested for HOLD_TO_DRAG_MS.
+ * Callers restart this on every move, so a drag only engages after the finger
+ * has actually stopped travelling — an ordinary glide never grabs anything.
+ */
+function armHoldDrag(gesture: PadGesture, onArmed: () => void): void {
+  cancelHoldDrag(gesture);
+  gesture.holdTimer = setTimeout(() => {
+    gesture.holdTimer = null;
+    if (gesture.dragging) return;
+    gesture.dragging = true;
+    onArmed();
+  }, HOLD_TO_DRAG_MS);
+}
+
+/** Releases the left button if a drag is armed. Returns true if it was. */
+function endDrag(gesture: PadGesture, onReleased: () => void): boolean {
+  cancelHoldDrag(gesture);
+  if (!gesture.dragging) return false;
+  gesture.dragging = false;
+  latest.sendMouseUp('left');
+  onReleased();
+  return true;
+}
+
 export default function TrackpadScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const tabBarClearance = useTabBarClearance();
   const {
     isConnected,
@@ -79,18 +143,15 @@ export default function TrackpadScreen() {
     sendMouseScroll,
     sendMouseDown,
     sendMouseUp,
-    sendKeyTap,
-    sendTypeText,
     getClipboard,
     setClipboard,
   } = useAgentWS();
 
   const [sensitivity, setSensitivity] = useState<number>(1.0);
-  const [showKeyboard, setShowKeyboard] = useState<boolean>(false);
-  const [inputText, setInputText] = useState<string>('');
   const [isAirMouseActive, setIsAirMouseActive] = useState<boolean>(false);
   const [showMacroDeck, setShowMacroDeck] = useState<boolean>(false);
   const [clipboardStatus, setClipboardStatus] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState<boolean>(false);
 
   // Animation values
   const [pulseAnim] = useState(() => new Animated.Value(0.35));
@@ -100,11 +161,13 @@ export default function TrackpadScreen() {
   const [leftScale] = useState(() => new Animated.Value(1));
   const [rightScale] = useState(() => new Animated.Value(1));
   const [middleScale] = useState(() => new Animated.Value(1));
-  const [keyboardAnim] = useState(() => new Animated.Value(0));
 
   // Mutable gesture tracking
-  const [gesture] = useState(() => ({
+  const [gesture] = useState<PadGesture>(() => ({
+    startPos: { x: 0, y: 0 },
     lastPos: { x: 0, y: 0 },
+    maxFingers: 1,
+    scrollVelocity: 0,
     accumX: 0,
     accumY: 0,
     touchStartTime: 0,
@@ -177,16 +240,6 @@ export default function TrackpadScreen() {
     return () => loop.stop();
   }, [pulseAnim]);
 
-  // Keyboard drawer animation
-  useEffect(() => {
-    Animated.spring(keyboardAnim, {
-      toValue: showKeyboard ? 1 : 0,
-      tension: 75,
-      friction: 12,
-      useNativeDriver: true,
-    }).start();
-  }, [showKeyboard, keyboardAnim]);
-
   const triggerTouchRipple = (x: number, y: number) => {
     touchPos.setValue({ x: x - 28, y: y - 28 });
     touchScale.setValue(0.3);
@@ -195,49 +248,6 @@ export default function TrackpadScreen() {
       Animated.timing(touchScale, { toValue: 2, duration: 300, useNativeDriver: true }),
       Animated.timing(touchOpacity, { toValue: 0, duration: 300, useNativeDriver: true }),
     ]).start();
-  };
-
-  // ── Scroll: only whole notches ever leave the phone ────────────────────
-  // Finger travel is notched up locally because Windows `MOUSEEVENTF_WHEEL`
-  // expects whole WHEEL_DELTA units and most applications integer-divide by
-  // 120 — anything smaller was being thrown away before it reached the PC.
-  const queueScroll = (units: number) => {
-    gesture.scrollRemainder += units;
-    const notches = Math.trunc(gesture.scrollRemainder / WHEEL_DELTA);
-    if (notches === 0) return;
-    gesture.scrollRemainder -= notches * WHEEL_DELTA;
-    latest.sendMouseScroll(notches * WHEEL_DELTA);
-  };
-
-  // ── Press-and-hold drag ───────────────────────────────────────────────
-  // Arming is debounced on movement: the timer is restarted by every move, so
-  // it only fires once the finger has actually stopped travelling. A glide
-  // therefore never turns into a drag, while "glide, pause, pull" does.
-  const cancelHoldDrag = () => {
-    if (gesture.holdTimer !== null) {
-      clearTimeout(gesture.holdTimer);
-      gesture.holdTimer = null;
-    }
-  };
-
-  const armHoldDrag = () => {
-    cancelHoldDrag();
-    gesture.holdTimer = setTimeout(() => {
-      gesture.holdTimer = null;
-      if (gesture.dragging) return;
-      gesture.dragging = true;
-      latest.sendMouseDown('left');
-      triggerHaptic.medium();
-    }, HOLD_TO_DRAG_MS);
-  };
-
-  /** Releases the left button if a drag is armed. Returns true if it was. */
-  const endDrag = (): boolean => {
-    cancelHoldDrag();
-    if (!gesture.dragging) return false;
-    gesture.dragging = false;
-    latest.sendMouseUp('left');
-    return true;
   };
 
   // Never leave the PC's left button held down if the screen goes away
@@ -250,6 +260,13 @@ export default function TrackpadScreen() {
     [gesture]
   );
 
+  // A dropped socket mid-drag would leave the PC's button pressed with nobody
+  // to release it. Releasing once on (re)connect clears that state — a no-op
+  // when no button is held.
+  useEffect(() => {
+    if (isConnected) latest.sendMouseUp('left');
+  }, [isConnected]);
+
   // Mouse Body / Palm Rest Touchpad
   const [panResponder] = useState(() =>
     PanResponder.create({
@@ -257,27 +274,45 @@ export default function TrackpadScreen() {
       onMoveShouldSetPanResponder: () => true,
 
       onPanResponderGrant: (evt: GestureResponderEvent) => {
-        const { locationX, locationY, pageX, pageY } = evt.nativeEvent;
+        const { locationX, locationY, pageX, pageY, touches } = evt.nativeEvent;
+        gesture.startPos = { x: pageX, y: pageY };
         gesture.lastPos = { x: pageX, y: pageY };
+        gesture.maxFingers = (touches && touches.length) ? touches.length : 1;
+        gesture.scrollVelocity = 0;
         gesture.accumX = 0;
         gesture.accumY = 0;
         gesture.touchStartTime = Date.now();
         gesture.touchMoved = false;
         // Hold still to arm a drag; a tap or a glide cancels it before it fires.
-        armHoldDrag();
+        armHoldDrag(gesture, () => {
+          setIsDragging(true);
+          latest.sendMouseDown('left');
+          triggerHaptic.medium();
+        });
         triggerTouchRipple(locationX, locationY);
       },
 
       onPanResponderMove: (evt: GestureResponderEvent, _gestureState: PanResponderGestureState) => {
         const { touches, pageX, pageY } = evt.nativeEvent;
+        gesture.maxFingers = Math.max(gesture.maxFingers, touches.length);
+
+        // Tap-slop filter: movements within TAP_SLOP_PX are considered stationary
+        const travel = Math.hypot(pageX - gesture.startPos.x, pageY - gesture.startPos.y);
+        if (travel > TAP_SLOP_PX) {
+          gesture.touchMoved = true;
+        }
 
         // A second finger means scroll intent, not drag. Otherwise every move
         // re-arms the hold timer, so a drag only engages once the finger has
         // genuinely been still for HOLD_TO_DRAG_MS.
         if (touches.length >= 2) {
-          if (!gesture.dragging) cancelHoldDrag();
+          if (!gesture.dragging) cancelHoldDrag(gesture);
         } else if (!gesture.dragging) {
-          armHoldDrag();
+          armHoldDrag(gesture, () => {
+            setIsDragging(true);
+            latest.sendMouseDown('left');
+            triggerHaptic.medium();
+          });
         }
 
         const rawDx = (pageX - gesture.lastPos.x) * latest.sensitivity * POINTER_GAIN;
@@ -294,11 +329,12 @@ export default function TrackpadScreen() {
 
         gesture.accumX -= stepX;
         gesture.accumY -= stepY;
-        gesture.touchMoved = true;
 
-        // Two-finger scroll: notched up to whole Windows wheel units.
+        // Two-finger scroll: notched up to whole Windows wheel units with momentum velocity tracking.
         if (touches.length === 2) {
-          queueScroll((-stepY * WHEEL_UNITS_PER_PX) / POINTER_GAIN);
+          const scrollStep = (-stepY * WHEEL_UNITS_PER_PX) / POINTER_GAIN;
+          gesture.scrollVelocity = scrollStep;
+          queueScroll(gesture, scrollStep);
           return;
         }
 
@@ -334,23 +370,47 @@ export default function TrackpadScreen() {
           latest.sendMouseMove(pendingX, pendingY);
         }
 
-        if (endDrag()) return;
+        if (endDrag(gesture, () => setIsDragging(false))) return;
 
         const elapsed = Date.now() - gesture.touchStartTime;
-        if (!gesture.touchMoved && elapsed < 250) {
-          triggerHaptic.light();
-          latest.sendMouseClick('left');
-          Animated.sequence([
-            Animated.timing(leftScale, { toValue: 0.94, duration: 40, useNativeDriver: true }),
-            Animated.spring(leftScale, { toValue: 1, friction: 3, useNativeDriver: true }),
-          ]).start();
+        if (!gesture.touchMoved && elapsed < 280) {
+          // Two-finger tap: Right Click
+          if (gesture.maxFingers === 2) {
+            triggerHaptic.selection();
+            latest.sendMouseClick('right');
+            Animated.sequence([
+              Animated.timing(rightScale, { toValue: 0.94, duration: 40, useNativeDriver: true }),
+              Animated.spring(rightScale, { toValue: 1, friction: 3, useNativeDriver: true }),
+            ]).start();
+          } else {
+            // Single-finger tap: Left Click
+            triggerHaptic.light();
+            latest.sendMouseClick('left');
+            Animated.sequence([
+              Animated.timing(leftScale, { toValue: 0.94, duration: 40, useNativeDriver: true }),
+              Animated.spring(leftScale, { toValue: 1, friction: 3, useNativeDriver: true }),
+            ]).start();
+          }
+          return;
+        }
+
+        // Two-finger momentum scrolling coasting physics
+        if (gesture.maxFingers === 2 && Math.abs(gesture.scrollVelocity) > 2) {
+          let coastV = gesture.scrollVelocity;
+          const runCoast = () => {
+            if (Math.abs(coastV) < 0.8) return;
+            queueScroll(gesture, coastV);
+            coastV *= 0.86; // smooth exponential decay
+            requestAnimationFrame(runCoast);
+          };
+          requestAnimationFrame(runCoast);
         }
       },
 
       onPanResponderTerminate: () => {
         // The gesture was taken over (system nav, app switch): release the
         // button rather than leaving the PC dragging.
-        endDrag();
+        endDrag(gesture, () => setIsDragging(false));
       },
     })
   );
@@ -372,7 +432,7 @@ export default function TrackpadScreen() {
         const dy = evt.nativeEvent.pageY - gesture.lastScrollY;
         if (Math.abs(dy) > 3) {
           gesture.wheelMoved = true;
-          queueScroll(-dy * WHEEL_UNITS_PER_PX);
+          queueScroll(gesture, -dy * WHEEL_UNITS_PER_PX);
           gesture.lastScrollY = evt.nativeEvent.pageY;
         }
       },
@@ -387,13 +447,6 @@ export default function TrackpadScreen() {
       },
     })
   );
-
-  const handleSendText = () => {
-    if (inputText.trim().length > 0) {
-      sendTypeText(inputText);
-      setInputText('');
-    }
-  };
 
   return (
     <View
@@ -497,21 +550,13 @@ export default function TrackpadScreen() {
           </TouchableOpacity>
 
           <TouchableOpacity
-            className={`p-1.5 rounded-lg border ${
-              showKeyboard
-                ? 'bg-[#CAF300] border-[#CAF300]'
-                : 'bg-zinc-800/60 border-zinc-700/50'
-            }`}
+            className="p-1.5 rounded-lg border bg-zinc-800/60 border-zinc-700/50"
             onPress={() => {
               triggerHaptic.selection();
-              setShowKeyboard(!showKeyboard);
+              router.push('/(tabs)/keyboard');
             }}
           >
-            <MaterialCommunityIcons
-              name="keyboard-outline"
-              size={15}
-              color={showKeyboard ? '#000000' : '#CAF300'}
-            />
+            <MaterialCommunityIcons name="keyboard-outline" size={15} color="#CAF300" />
           </TouchableOpacity>
         </View>
       </View>
@@ -521,64 +566,6 @@ export default function TrackpadScreen() {
         <View className="my-2">
           <MacroDeck />
         </View>
-      )}
-
-      {/* ── Keystroke Terminal Drawer ── */}
-      {showKeyboard && (
-        <Animated.View
-          className="bg-[#0B0F17] rounded-2xl p-3 my-2 border border-zinc-800 shadow-xl"
-          style={{
-            opacity: keyboardAnim,
-            transform: [
-              {
-                translateY: keyboardAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [-16, 0],
-                }),
-              },
-            ],
-          }}
-        >
-          <View className="flex-row gap-2">
-            <TextInput
-              className="flex-1 bg-black/70 rounded-xl text-white px-3.5 py-2 text-xs border border-zinc-800/90 font-mono"
-              placeholder="Stream typing directly to workstation..."
-              placeholderTextColor="#475569"
-              value={inputText}
-              onChangeText={setInputText}
-              onSubmitEditing={handleSendText}
-              returnKeyType="send"
-              autoFocus
-            />
-            <TouchableOpacity
-              className="bg-[#CAF300] rounded-xl px-4 justify-center items-center active:scale-95"
-              onPress={handleSendText}
-            >
-              <Text className="text-black font-mono font-black text-xs tracking-wider">EXEC</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View className="flex-row flex-wrap gap-1.5 mt-2.5 pt-2 border-t border-zinc-800/50">
-            {[
-              { label: 'ESC', key: 'esc' },
-              { label: 'TAB', key: 'tab' },
-              { label: 'ENTER', key: 'enter' },
-              { label: 'BKSP', key: 'backspace' },
-              { label: 'SPACE', key: 'space' },
-              { label: 'WIN', key: 'win' },
-              { label: 'CTRL', key: 'ctrl' },
-              { label: 'ALT', key: 'alt' },
-            ].map((k) => (
-              <TouchableOpacity
-                key={k.label}
-                className="bg-zinc-900 active:bg-zinc-800 px-2.5 py-1.5 rounded-lg border border-zinc-800"
-                onPress={() => sendKeyTap(k.key)}
-              >
-                <Text className="text-zinc-300 text-[10px] font-mono font-bold">{k.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </Animated.View>
       )}
 
       {/* ── MOUSE SHELL CHASSIS ── */}
@@ -714,7 +701,9 @@ export default function TrackpadScreen() {
 
         {/* ── BOTTOM SECTION: Curved Mouse Palm Rest Touchpad ── */}
         <View
-          className="flex-1 rounded-[28px] bg-[#0A0D15] border border-zinc-800/90 relative overflow-hidden justify-center items-center"
+          className={`flex-1 rounded-[28px] bg-[#0A0D15] border relative overflow-hidden justify-center items-center ${
+            isDragging ? 'border-[#CAF300]' : 'border-zinc-800/90'
+          }`}
           {...panResponder.panHandlers}
         >
           {/* Animated Glow Wave on Touch */}
@@ -752,7 +741,9 @@ export default function TrackpadScreen() {
               PALM REST TOUCHPAD
             </Text>
             <Text className="text-zinc-400 font-mono text-[9px] mt-1 tracking-tight">
-              Glide to Move Cursor &bull; 2-Finger Scroll
+              {isDragging
+                ? 'DRAG ENGAGED — MOVE TO PULL'
+                : 'Glide to Move • Hold to Drag • 2-Finger Scroll'}
             </Text>
           </View>
 

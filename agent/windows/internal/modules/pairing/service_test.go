@@ -133,11 +133,29 @@ func TestStartPairingHonoursSessionCapacity(t *testing.T) {
 	svc := pairing.NewService(repo, sessions, &fakeAudit{}, logger, clock.Now,
 		pairing.ServiceConfig{TokenGracePeriod: time.Second})
 
-	if _, err := svc.StartPairing(context.Background()); err != nil {
+	first, err := svc.StartPairing(context.Background())
+	if err != nil {
 		t.Fatalf("first: %v", err)
 	}
-	if _, err := svc.StartPairing(context.Background()); !errors.Is(err, pairing.ErrTooManySessions) {
-		t.Fatalf("second: err = %v, want ErrTooManySessions", err)
+	// Starting another session when capacity is 1 succeeds by evicting the oldest session,
+	// preventing "too many sessions" errors for the user.
+	clock.now = clock.now.Add(time.Second)
+	second, err := svc.StartPairing(context.Background())
+	if err != nil {
+		t.Fatalf("second should succeed by evicting first: %v", err)
+	}
+	if sessions.ActiveCount(clock.Now()) != 1 {
+		t.Fatalf("sessions count = %d, want 1", sessions.ActiveCount(clock.Now()))
+	}
+	// First session PIN is evicted
+	_, err = svc.ConfirmPairing(context.Background(), pairing.ConfirmRequest{PIN: first.PIN, Name: "Phone"})
+	if !errors.Is(err, pairing.ErrPINInvalid) {
+		t.Fatalf("first PIN should be invalid after eviction, got: %v", err)
+	}
+	// Second session PIN works
+	_, err = svc.ConfirmPairing(context.Background(), pairing.ConfirmRequest{PIN: second.PIN, Name: "Phone"})
+	if err != nil {
+		t.Fatalf("second PIN should succeed: %v", err)
 	}
 }
 

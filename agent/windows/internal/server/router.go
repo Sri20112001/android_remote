@@ -154,7 +154,7 @@ func NewRouter(deps RouterDependencies) *gin.Engine {
 // confirmation, or a pass-through when pairing is not wired (unit tests
 // that build a partial router).
 func confirmLimiter(deps RouterDependencies) gin.HandlerFunc {
-	if deps.ConfirmLimiter == nil {
+	if deps.ConfirmLimiter == nil || (deps.Config != nil && deps.Config.Security.RateLimit.ConfirmPerMinute <= 0) {
 		return func(c *gin.Context) { c.Next() }
 	}
 	return deps.ConfirmLimiter.Middleware(middleware.ClientIPKey)

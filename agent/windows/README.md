@@ -1,12 +1,12 @@
-# TUF Remote — Windows Agent (Backend)
+# Remote Deck — Windows Agent (Backend)
 
-TUF Remote lets an Android device control a Windows 11 PC over the local
+Remote Deck lets an Android or iOS device control a Windows PC over the local
 network. This repository contains the **Go backend agent** that runs on the
 PC: a local HTTP + WebSocket server exposing secure, versioned APIs for
 media, audio, display, input, monitoring, power, files and more.
 
 > **Status: Milestones 1–5 Delivered.**
-> Complete REST & WebSocket backend for Windows 11 remote control by Android devices.
+> Complete REST & WebSocket backend for Windows remote control by mobile devices.
 > See [docs/implementation-status.md](docs/implementation-status.md) for module details.
 
 ## What works today
@@ -16,7 +16,7 @@ media, audio, display, input, monitoring, power, files and more.
 | Liveness | REST | `GET /api/v1/health` | status, version, agent uptime |
 | Host identity | REST | `GET /api/v1/system/info` | hostname, OS version, LAN IPs, host uptime |
 | Runtime status | REST | `GET /api/v1/system/status` | database health, process memory/goroutines |
-| Network Discovery | mDNS + REST | `_tufremote._tcp`, `GET /api/v1/discovery/{info,qr}` | automatic discovery + QR code pairing payload |
+| Network Discovery | mDNS + REST | `_remotedeck._tcp`, `GET /api/v1/discovery/{info,qr}` | automatic discovery + QR code pairing payload |
 | Pairing & Auth | REST | `POST /api/v1/pairing/{start,confirm,revoke}`, `/pairing/devices`, `/auth/rotate` | PIN flow, hashed bearer tokens, rate limiting, grace periods |
 | Real-time WebSocket | WS | `ws(s)://<host>:<port>/ws` | 64 KiB framing, 30s/10s ping/pong heartbeat, command registry |
 | System Monitoring | REST + WS | `GET /api/v1/monitoring/system`, `ws monitoring:metrics` | CPU, RAM, battery, primary storage metrics |

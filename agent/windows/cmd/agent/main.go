@@ -1,4 +1,4 @@
-// Command agent runs the TUF Remote Windows background agent: a local HTTP
+// Command agent runs the Remote Deck Windows background agent: a local HTTP
 // and WebSocket server that an Android device uses to control this PC.
 package main
 

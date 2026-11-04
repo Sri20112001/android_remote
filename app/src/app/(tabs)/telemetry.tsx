@@ -49,10 +49,10 @@ export default function TelemetryScreen() {
 
   const [metrics, setMetrics] = useState<MetricsData | null>(null);
   const [refreshing, setRefreshing] = useState<boolean>(false);
-  const [processes, setProcesses] = useState<Array<{ pid: number; name: string; memory_mb: number }>>([]);
+  const [processes, setProcesses] = useState<{ pid: number; name: string; memory_mb: number }[]>([]);
   const [loadingProcesses, setLoadingProcesses] = useState<boolean>(false);
 
-  const fetchProcesses = () => {
+  const fetchProcesses = useCallback(() => {
     if (isConnected) {
       setLoadingProcesses(true);
       getProcesses()
@@ -62,7 +62,7 @@ export default function TelemetryScreen() {
         .catch(() => undefined)
         .finally(() => setLoadingProcesses(false));
     }
-  };
+  }, [isConnected, getProcesses]);
 
   // Animations
   const [sweepAnim] = useState(() => new Animated.Value(0));
@@ -133,7 +133,7 @@ export default function TelemetryScreen() {
     } else {
       setRefreshing(false);
     }
-  }, [isConnected, getMetrics]);
+  }, [isConnected, getMetrics, fetchProcesses]);
 
   useEffect(() => {
     const initialFetch = setTimeout(() => {

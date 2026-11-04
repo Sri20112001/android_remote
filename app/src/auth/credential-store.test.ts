@@ -69,7 +69,7 @@ describe('CredentialStore', () => {
   it('treats corrupt JSON as unpaired and wipes it', async () => {
     const backend = memoryBackend();
     const store = new CredentialStore(backend);
-    await backend.set('tuf.session.v1', '{"origin": "http://pc:8765", ');
+    await backend.set('remotedeck.session.v1', '{"origin": "http://pc:8765", ');
 
     expect(await store.load()).toBeNull();
     expect(backend.map.size).toBe(0);
@@ -78,7 +78,7 @@ describe('CredentialStore', () => {
   it('treats a structurally wrong record as unpaired and wipes it', async () => {
     const backend = memoryBackend();
     const store = new CredentialStore(backend);
-    await backend.set('tuf.session.v1', JSON.stringify({ origin: 'http://pc:8765', token: '' }));
+    await backend.set('remotedeck.session.v1', JSON.stringify({ origin: 'http://pc:8765', token: '' }));
 
     expect(await store.load()).toBeNull();
     expect(backend.map.size).toBe(0);

@@ -1,5 +1,5 @@
 /**
- * Design tokens for TUF Remote.
+ * Design tokens for Remote Deck.
  *
  * Palette and type direction follow the product mockups in
  * `design/` (dark OLED surfaces, lime accent, monospace micro-labels).

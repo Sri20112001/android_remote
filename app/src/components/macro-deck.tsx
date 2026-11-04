@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Animated, Platform } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAgentWS } from '@/api/use-agent-ws';
@@ -13,7 +13,9 @@ interface MacroTileProps {
 }
 
 function MacroTile({ label, icon, color, subLabel, onPress }: MacroTileProps) {
-  const scale = useRef(new Animated.Value(1)).current;
+  // Lazy initialiser, not a ref: the value is read during render and must be
+  // created exactly once per mounted tile.
+  const [scale] = useState(() => new Animated.Value(1));
 
   const handlePressIn = () => {
     Animated.spring(scale, { toValue: 0.92, friction: 6, useNativeDriver: true }).start();
@@ -48,7 +50,7 @@ function MacroTile({ label, icon, color, subLabel, onPress }: MacroTileProps) {
 }
 
 export function MacroDeck() {
-  const { launchApp, sendKeyTap, lockWorkstation } = useAgentWS();
+  const { launchApp, sendKeyTap } = useAgentWS();
 
   const apps = [
     { label: 'CHROME', icon: 'google-chrome' as const, color: '#38BDF8', app: 'chrome', sub: 'WEB' },
@@ -75,6 +77,34 @@ export function MacroDeck() {
       action: () => sendKeyTap('s', ['win', 'shift']),
     },
     {
+      label: 'TASK VIEW',
+      sub: 'WIN+TAB',
+      icon: 'view-grid-outline' as const,
+      color: '#818CF8',
+      action: () => sendKeyTap('tab', ['win']),
+    },
+    {
+      label: 'EXPLORER',
+      sub: 'WIN+E',
+      icon: 'folder-outline' as const,
+      color: '#FBBF24',
+      action: () => sendKeyTap('e', ['win']),
+    },
+    {
+      label: 'TASK MGR',
+      sub: 'CTRL+SH+ESC',
+      icon: 'chart-box-outline' as const,
+      color: '#EF4444',
+      action: () => sendKeyTap('esc', ['ctrl', 'shift']),
+    },
+    {
+      label: 'CLIPBOARD',
+      sub: 'WIN+V',
+      icon: 'clipboard-text-outline' as const,
+      color: '#34D399',
+      action: () => sendKeyTap('v', ['win']),
+    },
+    {
       label: 'SWITCHER',
       sub: 'ALT+TAB',
       icon: 'dock-window' as const,
@@ -85,7 +115,7 @@ export function MacroDeck() {
       label: 'CLOSE WIN',
       sub: 'ALT+F4',
       icon: 'window-close' as const,
-      color: '#EF4444',
+      color: '#F43F5E',
       action: () => sendKeyTap('f4', ['alt']),
     },
     {

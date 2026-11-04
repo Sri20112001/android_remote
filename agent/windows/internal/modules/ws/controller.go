@@ -59,20 +59,27 @@ func (ctl *Controller) Connect(c *gin.Context) {
 		}
 	}
 
-	if token == "" {
-		utils.RespondError(c, http.StatusUnauthorized, constants.CodeUnauthorized, "device token required")
-		return
-	}
+	var identity middleware.Identity
+	var err error
 
-	identity, err := ctl.validator.ValidateToken(c.Request.Context(), token)
-	if err != nil {
-		if errors.Is(err, middleware.ErrInvalidToken) {
-			utils.RespondError(c, http.StatusUnauthorized, constants.CodeUnauthorized, "invalid or expired token")
+	if token == "" {
+		if middleware.IsLoopback(c) {
+			identity = middleware.Identity{Local: true, DeviceName: "Workstation Host"}
+		} else {
+			utils.RespondError(c, http.StatusUnauthorized, constants.CodeUnauthorized, "device token required")
 			return
 		}
-		ctl.logger.Error("ws token validation error", "error", err)
-		utils.RespondError(c, http.StatusInternalServerError, constants.CodeInternal, "authentication check failed")
-		return
+	} else {
+		identity, err = ctl.validator.ValidateToken(c.Request.Context(), token)
+		if err != nil {
+			if errors.Is(err, middleware.ErrInvalidToken) {
+				utils.RespondError(c, http.StatusUnauthorized, constants.CodeUnauthorized, "invalid or expired token")
+				return
+			}
+			ctl.logger.Error("ws token validation error", "error", err)
+			utils.RespondError(c, http.StatusInternalServerError, constants.CodeInternal, "authentication check failed")
+			return
+		}
 	}
 
 	conn, err := ctl.upgrader.Upgrade(c.Writer, c.Request, nil)

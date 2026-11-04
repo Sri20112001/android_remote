@@ -132,16 +132,16 @@ export default function PairScreen() {
 
       {/* Pairing header */}
       <View className="gap-2 py-2">
-        <Text className="text-xs font-semibold uppercase tracking-widest text-slate-500">
+        <Text className="text-xs font-semibold uppercase tracking-widest text-text-dim">
           Device setup
         </Text>
 
-        <Text className="mt-1 text-3xl font-bold text-slate-900">
+        <Text className="mt-1 font-display text-3xl tracking-[1px] text-text">
           Pair device
         </Text>
 
         <Text
-          className="mt-1 text-sm text-slate-500"
+          className="mt-1 text-sm text-text-dim"
           numberOfLines={1}
           ellipsizeMode="middle"
         >
@@ -199,7 +199,7 @@ export default function PairScreen() {
       </Card>
 
       {/* Security information */}
-      <Text className="px-2 text-center text-sm leading-5 text-slate-500">
+      <Text className="px-2 text-center text-sm leading-5 text-text-dim">
         Only this PIN can authorize the device, and it expires a few
         minutes after the pairing window opens on the PC.
       </Text>

@@ -248,7 +248,7 @@ describe('agent pairing contract (end-to-end)', () => {
     const health = await client.getHealth();
 
     expect(health.status).toBe('ok');
-    expect(health.app_name).toBe('TUF Remote');
+    expect(health.app_name).toBe('Remote Deck');
     expect(typeof health.version).toBe('string');
   });
 

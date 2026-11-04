@@ -3,16 +3,17 @@
 Base URL: `http(s)://<host>:<port>/api/v1`
 
 This document describes the **implemented** API. Planned endpoints are listed
-with their intended transport so the Android client can be designed against
-the contract; they return `404` until their milestone lands.
+at the end with their intended transport and milestone so the Android client
+can be designed against the contract; they return `404` until they land.
+
+Transport split: REST for request/response operations and snapshots, WebSocket
+(`/ws`, see [websocket-protocol.md](websocket-protocol.md)) for latency-critical
+commands, typed commands with correlation, and server push. A feature is
+exposed on exactly one *primary* transport unless duplication is justified; the
+module sections say which.
 
 ## Conventions
 
-- **Transport**: REST over HTTP(S) for request/response operations that are
-  not latency-critical. Real-time commands and live events use WebSocket
-  (`/ws`, see [websocket-protocol.md](websocket-protocol.md)). Features are
-  exposed on exactly one transport unless duplication is justified; the
-  planned table says which.
 - **Encoding**: `application/json; charset=utf-8`, UTF-8 only.
 - **Success**: the payload is the resource itself (no envelope).
 - **Failure**: always the same envelope:
@@ -39,6 +40,7 @@ the contract; they return `404` until their milestone lands.
 
 - **Correlation**: every response carries `X-Request-ID`; the same value
   appears in the server log line for the request.
+- **Request bodies**: capped at 1 MiB (`server.max_request_bytes`).
 - **Authentication** — three levels, decided per endpoint:
 
   | Level | Endpoints | Rule |
@@ -49,7 +51,8 @@ the contract; they return `404` until their milestone lands.
   | loopback only | `/pairing/start`, `/pairing/devices`, `/pairing/revoke`, `/discovery/qr` | a LAN peer receives `403` |
 
   Tokens come from `POST /pairing/confirm` (shown once) and are replaced via
-  `POST /auth/rotate`.
+  `POST /auth/rotate`. A failed token *validation* is `401`; an
+  infrastructure failure during validation is `500` and fails closed.
 - **Browser requests**: the guard rejects cross-site fetches, mismatched or
   opaque `Origin` headers, and any `Host` outside the allowlist (IP literals,
   `localhost`, the machine's hostname, `security.allowed_hosts`) with `403`.
@@ -57,9 +60,10 @@ the contract; they return `404` until their milestone lands.
 - **Rate limiting**: `POST /pairing/confirm` allows 20 attempts per client IP
   per minute by default (`security.rate_limit.confirm_per_minute`); over-budget
   requests answer `429` with `Retry-After`. The PIN itself has its own attempt
-  budget inside each pairing session.
+  budget inside each pairing session. Authenticated feature endpoints are not
+  rate limited.
 
-## Implemented endpoints
+## System
 
 ### `GET /health`
 
@@ -132,7 +136,9 @@ the body is present in both cases and explains which component fails.
 `database.status` reflects a timed `PingContext`; failure yields
 `"status":"degraded"` for the endpoint. Error causes go to the server log,
 never to the client. `process.memory` describes the **agent process**, not
-system RAM (system telemetry arrives with the monitoring module).
+system RAM — host telemetry is `GET /monitoring/system`.
+
+## Pairing and authentication
 
 ### `POST /pairing/start`
 
@@ -234,26 +240,353 @@ Rotates an active bearer token. Requires `Authorization: Bearer <token>` **even 
 
 `200` — new token issued (shown once) · `401` — missing, unknown, expired or revoked token · `403` — cross-origin request or unknown `Host`.
 
+## Discovery
+
+### `GET /discovery/info`
+
+Public snapshot used for LAN discovery and for verifying a connection before
+pairing. Open — no credential.
+
+```json
+{
+  "agent_name": "TUF Remote",
+  "version": "0.1.0",
+  "hostname": "LAPTOP-DPEFC07F",
+  "addresses": ["192.168.0.104"],
+  "port": 8765,
+  "tls_enabled": false
+}
+```
+
+`200` — snapshot · `503` — platform information unavailable.
+
+### `GET /discovery/qr`
+
+Loopback only. Returns the payload the agent window renders as a QR code,
+including the live pairing PIN when `session_id` and `pin` query parameters are
+supplied (normally by the agent's own UI right after `POST /pairing/start`).
+
+| Query | Required | Meaning |
+|---|---|---|
+| `session_id` | no | pairing session to embed |
+| `pin` | no | PIN to embed; omitted from the response when absent |
+
+```json
+{
+  "agent_name": "TUF Remote",
+  "version": "0.1.0",
+  "hostname": "LAPTOP-DPEFC07F",
+  "ip_addresses": ["192.168.0.104"],
+  "port": 8765,
+  "tls_enabled": false,
+  "session_id": "7f4a1c9e2b5d8a3f6c0e4b7d1a9f2c5e",
+  "pin": "492815"
+}
+```
+
+`200` — payload · `403` — non-loopback, cross-origin or unknown `Host` ·
+`503` — platform information unavailable.
+
+## Monitoring
+
+Primary transport: **REST snapshot**. The WebSocket adds a request/response
+command (`monitoring.metrics`) and process control. No server-push telemetry is
+scheduled today — see *Known gaps*.
+
+### `GET /monitoring/system`
+
+Bearer or loopback.
+
+```json
+{
+  "cpu": { "usage_percent": 12.5 },
+  "memory": {
+    "total_bytes": 17179869184,
+    "available_bytes": 8589934592,
+    "used_bytes": 8589934592,
+    "usage_percent": 50
+  },
+  "battery": {
+    "present": true,
+    "charging": true,
+    "percentage": 87,
+    "life_time_seconds": 18420
+  },
+  "disks": [
+    {
+      "mount": "C:",
+      "total_bytes": 511101108224,
+      "free_bytes": 123456789012,
+      "used_bytes": 387644319212,
+      "usage_percent": 75.8
+    }
+  ]
+}
+```
+
+| Field | Notes |
+|---|---|
+| `cpu.usage_percent` | 0–100, sampled by the provider |
+| `memory` | physical RAM (`GlobalMemoryStatusEx`) |
+| `battery.present` | `false` on desktops without a battery; `percentage` is then `0` |
+| `battery.life_time_seconds` | omitted when unknown |
+| `disks` | omitted when no logical drive is readable |
+
+`200` — snapshot · `401` — missing/invalid token · `500` — collection failed.
+
+### WebSocket commands
+
+| Command | Payload | Result |
+|---|---|---|
+| `monitoring.metrics` | — | same body as `GET /monitoring/system` |
+| `monitoring.processes` | — | `[{ "pid": 1234, "name": "chrome.exe", "memory_mb": 512.4 }]` |
+| `monitoring.kill_process` | `{ "pid": 1234 }` | `{ "success": true }` |
+
+`kill_process` terminates the process with the given `pid`; a missing or
+unreadable process answers `internal_error`.
+
+## Power
+
+Primary transport: **REST**, mirrored on WebSocket. Destructive actions use a
+two-step handshake: `request` mints a single-use confirmation token valid for
+**30 seconds**, `confirm` spends it. Locking is non-destructive and immediate.
+
+### `POST /power/lock`
+
+Bearer or loopback.
+
+```json
+{ "status": "locked" }
+```
+
+`200` — desktop locked · `401` — missing/invalid token · `500` — lock failed.
+
+### `POST /power/request`
+
+```json
+{ "action": "restart" }
+```
+
+`action` ∈ `sleep` \| `hibernate` \| `restart` \| `shutdown`. `lock` is **not**
+accepted here — use `POST /power/lock`.
+
+```json
+{
+  "confirmation_token": "5c1f0a9b7e3d42a8b6c4d2e0f1a3b5c7",
+  "action": "restart",
+  "expires_at": "2026-11-02T09:15:30Z"
+}
+```
+
+`200` — token issued · `400` — unknown action or malformed body ·
+`401` — missing/invalid token.
+
+### `POST /power/confirm`
+
+```json
+{ "confirmation_token": "5c1f0a9b7e3d42a8b6c4d2e0f1a3b5c7" }
+```
+
+```json
+{ "action": "restart", "status": "initiated" }
+```
+
+`200` — action dispatched · `400` — unknown, already spent or expired token,
+**or the OS refused the action** (the controller maps every service failure to
+`400`, so clients must read the message) · `401` — missing/invalid token.
+
+Tokens are single-use: they are deleted when spent or when they expire, so a
+replay answers `400`. Every lock and confirmed action is written to the audit
+log with the acting identity.
+
+### WebSocket commands
+
+| Command | Payload | Result |
+|---|---|---|
+| `power.lock` | — | `{ "status": "locked" }` |
+| `power.request` | `{ "action": "shutdown" }` | same body as `POST /power/request` |
+| `power.confirm` | `{ "confirmation_token": "…" }` | `{ "action": "shutdown", "status": "initiated" }` |
+
+## Audio
+
+Primary transport: **REST**, mirrored on WebSocket.
+
+### `GET /audio/volume`
+
+Bearer or loopback.
+
+```json
+{ "level": 42, "muted": false }
+```
+
+`level` is the master volume, 0–100.
+
+`200` — current state · `401` — missing/invalid token · `500` — endpoint
+unavailable.
+
+### `PUT /audio/volume`
+
+```json
+{ "level": 75 }
+```
+
+Responds with the **new** state (`{ "level": 75, "muted": false }`).
+`200` — applied · `400` — malformed body · `500` — device refused the change.
+
+### `POST /audio/mute`
+
+```json
+{ "muted": true }
+```
+
+Responds with the new state. `200` — applied · `400` — malformed body ·
+`500` — device refused the change.
+
+### WebSocket commands
+
+| Command | Payload | Result |
+|---|---|---|
+| `audio.get_volume` | — | `{ "level": 42, "muted": false }` |
+| `audio.set_volume` | `{ "level": 75 }` | new state |
+| `audio.set_mute` | `{ "muted": true }` | new state |
+| `audio.toggle_mute` | — | new state |
+
+## Input injection
+
+Primary transport: **WebSocket** (latency-critical). REST equivalents exist
+for tooling and for clients without a socket; both run the same service.
+
+### `POST /input/mouse`
+
+Bearer or loopback. `action` selects the operation:
+
+| `action` | Required fields | Effect |
+|---|---|---|
+| `move` | `dx`, `dy` — or `x`, `y` with `absolute: true` | moves the cursor |
+| `click` | `button` (`left`/`right`/`middle`), optional `double` | click at the current position |
+| `down` / `up` | `button` | press / release a button and hold it |
+| `scroll` | `dy` | wheel notches; negative scrolls up |
+
+Omitting `action` falls back compatibly: `dx`/`dy` mean move, otherwise a
+`button` means click.
+
+```json
+{ "action": "click", "button": "left", "double": false }
+```
+
+```json
+{ "success": true }
+```
+
+`200` — injected · `400` — malformed body · `401` — missing/invalid token ·
+`500` — `SendInput` failed.
+
+### `POST /input/keyboard`
+
+| `action` | Required fields | Effect |
+|---|---|---|
+| `tap` | `key`, optional `modifiers` | press+release, with modifiers held around it |
+| `down` / `up` | `key` | hold / release a key |
+| `text` | `text` | types Unicode text |
+
+`key` is a lower-case name (`enter`, `backspace`, `tab`, `esc`, `space`,
+`a`–`z`, `0`–`9`, `f1`–`f12`, punctuation names, arrows, `home`, `end`,
+`pageup`, `pagedown`, `insert`, `delete`, `capslock`). `modifiers` is any
+subset of `ctrl`, `alt`, `shift`, `win`.
+
+```json
+{ "action": "tap", "key": "a", "modifiers": ["ctrl"] }
+```
+
+`200` — injected · `400` — malformed body · `500` — `SendInput` failed.
+
+### WebSocket commands
+
+| Command | Payload | Result |
+|---|---|---|
+| `input.mouse` | a `MousePayload` | `{ "success": true }` |
+| `input.mouse_move` | `{ "dx": 8, "dy": -4 }` | *(no response payload)* |
+| `input.mouse_click` | `{ "button": "left", "double": false }` | `{ "success": true }` |
+| `input.mouse_scroll` | `{ "dy": 120 }` | *(no response payload)* |
+| `input.keyboard` | a `KeyboardPayload` | `{ "success": true }` |
+| `input.key_tap` | `{ "key": "enter", "modifiers": ["ctrl"] }` | `{ "success": true }` |
+| `input.type_text` | `{ "text": "hello" }` | `{ "success": true }` |
+| `input.launch_app` | `{ "app": "chrome" }` | `{ "success": true }` |
+
+`mouse_move` and `mouse_scroll` are the high-frequency path: the handler returns
+no data, so **no response frame is sent at all** — clients must fire and forget
+those two and must not wait for a timeout. They also discard injection errors;
+use `input.mouse` with an explicit `action` when the result matters. See
+[websocket-protocol.md](websocket-protocol.md#input).
+
+`launch_app` accepts **only** an allowlisted key — `chrome`, `spotify`, `code`,
+`calc`, `taskmgr`, `terminal`, `cmd`, `notepad`, `explorer`, `settings`.
+Anything else answers `invalid_request`; there is no path or command-string
+passthrough.
+
+## Clipboard
+
+Primary transport: **REST**, mirrored on WebSocket. Text only.
+
+### `GET /clipboard`
+
+```json
+{ "text": "copied text" }
+```
+
+`200` — current text (may be empty) · `500` — clipboard unavailable.
+
+### `POST /clipboard`
+
+```json
+{ "text": "text to place on the PC clipboard" }
+```
+
+```json
+{ "success": true }
+```
+
+`200` — written · `400` — malformed body · `500` — clipboard unavailable.
+
+### WebSocket commands
+
+| Command | Payload | Result |
+|---|---|---|
+| `clipboard.get` | — | `{ "text": "…" }` |
+| `clipboard.set` | `{ "text": "…" }` | `{ "success": true }` |
+
 ## Planned endpoints
 
 Status markers: `planned` (designed, not implemented). No endpoint below
-responds with anything but `404` today.
+responds with anything but `404` today, and the Android client must not call
+them yet.
 
 | Endpoint | Transport | Milestone | Purpose |
 |---|---|---|---|
-| `POST /media/control` | WS + REST | 5 | play/pause/next/previous/seek |
-| `GET /media/sessions` | REST | 5 | active media sessions |
-| `GET/PUT /audio/volume`, `/audio/mute`, `/audio/devices` | WS + REST | 5 | Core Audio control |
-| `GET/PUT /display/brightness`, `GET /display/monitors` | WS + REST | 5 | brightness, resolution, refresh rate |
-| `POST /input/mouse`, `/input/keyboard` | WS (primary) | 5 | mouse/keyboard injection |
-| `GET /monitoring/{cpu,memory,gpu,battery,network}` | WS (primary) | 5 | telemetry stream + REST snapshot |
-| `POST /power/{lock,sleep,hibernate,restart,shutdown}` | REST (confirm flow) | 5 | power management |
-| `GET/POST /applications`, `POST /applications/{id}/close` | REST | 5 | application management |
-| `GET/POST /files`, upload/download | REST (streamed) | 5 | file browsing inside approved directories |
-| `GET/PUT /clipboard` | WS (events) + REST | 5 | clipboard sync (opt-in) |
-| `GET /notifications` | WS (events) | 5 | Windows notification stream |
-| `POST /automation/macro/...` | REST + WS | 5 | macros from a validated action registry |
-| `POST /screen/screenshot`, `GET /screen/stream` | REST + separate stream | 5 | screenshots, live screen |
+| `POST /media/control` | WS + REST | 6 | play/pause/next/previous/seek |
+| `GET /media/sessions` | REST | 6 | active media sessions |
+| `GET /display/monitors` | REST | 6 | monitors, resolution, refresh rate |
+| `GET/PUT /display/brightness` | WS + REST | 6 | brightness |
+| `POST /applications`, `POST /applications/{id}/close` | REST | 6 | application management |
+| `GET/POST /files`, upload/download | REST (streamed) | 6 | file browsing inside approved directories |
+| `GET /notifications` | WS (events) | 6 | Windows notification stream |
+| `POST /automation/macro/...` | REST + WS | 6 | macros from a validated action registry |
+| `POST /screen/screenshot`, `GET /screen/stream` | REST + separate stream | 6 | screenshots, live screen |
 
-Exact request/response schemas are documented per module as they are
-implemented, and `openapi.yaml` is updated in the same change.
+A file module is required before `useAgentWS().uploadFile` can do real work;
+the client currently rejects with an explicit "not available" error rather
+than probing a route that does not exist.
+
+## Known gaps
+
+1. **No push telemetry.** `monitoring.StartBroadcaster` exists but is never
+   scheduled by bootstrap, so no `monitoring.metrics` events are emitted.
+   Clients poll `GET /monitoring/system` (the Android app does so every 3 s).
+2. **No rate limiting on feature endpoints.** Only `POST /pairing/confirm` has
+   a per-IP budget; authenticated endpoints rely on authentication plus the
+   WebSocket connection caps.
+3. **No TLS provisioning.** TLS works with provided cert/key files; trust
+   distribution for a private LAN is not implemented.
+4. **Hardware sign-off.** Windows API paths are covered by unit tests through
+   their platform interfaces, but no real-hardware sign-off is recorded for
+   milestone 5.

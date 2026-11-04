@@ -137,19 +137,19 @@ export default function HomeScreen() {
 
       {/* Device overview */}
       <View className="gap-1 py-2">
-        <Text className="text-xs font-semibold uppercase tracking-widest text-slate-500">
+        <Text className="font-mono-medium text-[10px] uppercase tracking-[1.6px] text-text-dim">
           Your agent
         </Text>
 
         <Text
-          className="mt-1 text-3xl font-bold text-[#CAF300]"
+          className="mt-1 font-display text-3xl tracking-[1px] text-accent"
           numberOfLines={1}
         >
           {info?.agent_name ?? paired.device.name}
         </Text>
 
         <Text
-          className="mt-1 text-sm text-slate-500"
+          className="mt-1 text-sm text-text-dim"
           numberOfLines={1}
           ellipsizeMode="middle"
         >
@@ -176,11 +176,11 @@ export default function HomeScreen() {
       {/* Agent information */}
       <Card>
         <View className="mb-3 gap-1">
-          <Text className="text-lg font-semibold text-[#CAF300]">
+          <Text className="text-lg font-semibold text-accent">
             Agent status
           </Text>
 
-          <Text className="text-sm text-slate-500">
+          <Text className="text-sm text-text-dim">
             Connection and runtime information
           </Text>
         </View>
@@ -220,11 +220,11 @@ export default function HomeScreen() {
       {/* Paired device information */}
       <Card>
         <View className="mb-3 gap-1">
-          <Text className="text-lg font-semibold text-[#CAF300]">
+          <Text className="text-lg font-semibold text-accent">
             This device
           </Text>
 
-          <Text className="text-sm text-slate-500">
+          <Text className="text-sm text-text-dim">
             Device paired with your agent
           </Text>
         </View>

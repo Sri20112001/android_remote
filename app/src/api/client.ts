@@ -1,5 +1,5 @@
 /**
- * Typed HTTP client for the TUF Remote agent.
+ * Typed HTTP client for the Remote Deck agent.
  *
  * Design rules:
  * - one class, constructor injection (origin, token, fetch, timeout) — no

@@ -1,6 +1,6 @@
-# TUF Remote // Cyberpunk Workstation Control Deck
+# Remote Deck // High-Performance Workstation Control Deck
 
-> Ultra-low-latency, military-grade LAN remote control system for Windows workstations driven from an Android / iOS device. Built with a native **Go Win32 Agent** and an **Expo React Native** tactical mobile client.
+> Ultra-low-latency, sleek LAN remote control system for Windows workstations driven from an Android / iOS device. Built with a native **Go Win32 Agent**, **Tauri Desktop Control Center**, and an **Expo React Native** mobile client.
 
 ---
 
@@ -89,7 +89,7 @@ cd agent/windows
 .\scripts\build.ps1
 
 # Run the agent (defaults to port 8765)
-.\bin\tuf-remote-agent.exe
+.\bin\remotedeck-agent.exe
 
 # To run tests & validation:
 .\scripts\test.ps1
@@ -139,4 +139,4 @@ go vet ./...               # Static analysis
 ---
 
 ## 📄 License
-MIT License. Built for seamless, military-grade personal workstation control.
+MIT License. Built for seamless workstation control.

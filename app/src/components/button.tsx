@@ -1,10 +1,11 @@
 /**
  * Button: the app's only tappable command control.
  *
- * Native Cloud design:
+ * Dark console design:
  * - 52dp minimum touch target
- * - Subtle pressed feedback
- * - Clearly differentiated button variants
+ * - Lime primary (the one "do the thing" colour in the palette)
+ * - Ghost and danger variants stay on flat surfaces so a destructive action
+ *   is outlined in danger red rather than filled with it
  * - Loading spinner and disabled states
  */
 
@@ -16,6 +17,8 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
+
+import { Color } from '@/theme/tokens';
 
 export type ButtonVariant = 'primary' | 'ghost' | 'danger';
 
@@ -46,22 +49,22 @@ export function Button({
 
   const variants = {
     primary: {
-      container: 'bg-slate-900 active:bg-slate-800',
-      text: 'text-white',
-      icon: '#FFFFFF',
-      spinner: '#FFFFFF',
+      container: 'bg-accent active:bg-accent-pressed',
+      text: 'text-on-accent',
+      icon: Color.onAccent,
+      spinner: Color.onAccent,
     },
     ghost: {
-      container: 'border border-slate-200 bg-white active:bg-slate-100',
-      text: 'text-slate-800',
-      icon: '#334155',
-      spinner: '#334155',
+      container: 'border border-border bg-surface active:bg-surface-high',
+      text: 'text-text',
+      icon: Color.textDim,
+      spinner: Color.textDim,
     },
     danger: {
-      container: 'border border-red-200 bg-white active:bg-red-50',
-      text: 'text-red-600',
-      icon: '#DC2626',
-      spinner: '#DC2626',
+      container: 'border border-danger bg-surface active:bg-surface-high',
+      text: 'text-danger',
+      icon: Color.danger,
+      spinner: Color.danger,
     },
   }[variant];
 
@@ -99,7 +102,7 @@ export function Button({
           <Text
             numberOfLines={1}
             ellipsizeMode="tail"
-            className={`text-sm font-bold tracking-wide text-center ${variants.text}`}
+            className={`text-center font-mono-medium text-[12px] uppercase tracking-[1.6px] ${variants.text}`}
           >
             {label}
           </Text>

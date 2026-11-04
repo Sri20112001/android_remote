@@ -3,10 +3,23 @@ info:
   title: TUF Remote — Windows Agent API
   version: 0.1.0
   description: |
-    Local REST API of the TUF Remote Windows agent (Milestone 1: core
-    foundation). The agent binds to loopback by default; LAN deployments
-    must enable TLS. Endpoints are added per milestone — see
-    docs/implementation-status.md.
+    Local REST API of the TUF Remote Windows agent, covering milestones 1–5:
+    core foundation, pairing/authentication, WebSocket transport, discovery,
+    and the Windows feature modules (monitoring, power, audio, input,
+    clipboard).
+
+    The agent binds to loopback by default; LAN deployments must enable TLS.
+    Endpoints are added per milestone — see docs/implementation-status.md.
+
+    **Authentication.** `open` endpoints need no credential. Feature
+    endpoints accept `Authorization: Bearer <device-token>` *or* a request
+    originating on the PC itself (loopback). `/ws` and `/auth/rotate` require
+    a token even from loopback. `/pairing/*` administration and
+    `/discovery/qr` are loopback only.
+
+    **Transports.** REST snapshots and request/response operations are
+    described here; the WebSocket command registry and event frames are
+    described in docs/websocket-protocol.md.
 servers:
   - url: http://127.0.0.1:8765/api/v1
     description: Local development (loopback, no TLS)
@@ -63,6 +76,58 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/SystemStatusResponse" }
+
+  /discovery/info:
+    get:
+      operationId: getDiscoveryInfo
+      summary: Public snapshot used for LAN discovery
+      security: []
+      responses:
+        "200":
+          description: Discovery snapshot
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DiscoveryInfoResponse" }
+        "503":
+          description: Platform information unavailable
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /discovery/qr:
+    get:
+      operationId: getDiscoveryQR
+      summary: QR payload for the agent window (loopback only)
+      description: |
+        Loopback only: a LAN peer receives `403`. When `session_id` and `pin`
+        are supplied (normally right after `POST /pairing/start`) they are
+        embedded so the QR code can complete pairing in one scan.
+      security: []
+      parameters:
+        - name: session_id
+          in: query
+          required: false
+          schema: { type: string, maxLength: 64 }
+        - name: pin
+          in: query
+          required: false
+          schema: { type: string, pattern: '^[0-9]{6}$' }
+      responses:
+        "200":
+          description: QR payload
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DiscoveryQRPayload" }
+        "403":
+          description: Non-loopback, cross-origin request or unknown Host header
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "503":
+          description: Platform information unavailable
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
 
   /pairing/start:
     post:
@@ -195,13 +260,307 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
 
+  /monitoring/system:
+    get:
+      operationId: getSystemMetrics
+      summary: Current CPU, memory, battery and disk snapshot
+      description: |
+        Bearer token or a loopback caller. The WebSocket `monitoring.metrics`
+        command returns the same body.
+      security:
+        - deviceToken: []
+      responses:
+        "200":
+          description: Metrics snapshot
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SystemMetrics" }
+        "401":
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "500":
+          description: Metrics could not be collected
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /power/lock:
+    post:
+      operationId: lockWorkstation
+      summary: Lock the Windows desktop immediately
+      description: Non-destructive, so it needs no confirmation token.
+      security:
+        - deviceToken: []
+      responses:
+        "200":
+          description: Workstation locked
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PowerLockResponse" }
+        "401":
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "500":
+          description: The OS refused the lock
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /power/request:
+    post:
+      operationId: requestPowerAction
+      summary: Mint a 30 s confirmation token for a destructive power action
+      security:
+        - deviceToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PowerRequestPayload" }
+      responses:
+        "200":
+          description: Confirmation token issued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PowerRequestResponse" }
+        "400":
+          description: Unknown or unsupported action, or malformed body
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /power/confirm:
+    post:
+      operationId: confirmPowerAction
+      summary: Execute a power action with its confirmation token
+      security:
+        - deviceToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PowerConfirmPayload" }
+      responses:
+        "200":
+          description: Action dispatched to the OS
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PowerConfirmResponse" }
+        "400":
+          description: Unknown, already spent or expired confirmation token
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /audio/volume:
+    get:
+      operationId: getVolume
+      summary: Current master volume and mute state
+      security:
+        - deviceToken: []
+      responses:
+        "200":
+          description: Current audio state
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VolumeStatus" }
+        "401":
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "500":
+          description: Audio endpoint unavailable
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    put:
+      operationId: setVolume
+      summary: Set master volume
+      security:
+        - deviceToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SetVolumePayload" }
+      responses:
+        "200":
+          description: New audio state
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VolumeStatus" }
+        "400":
+          description: Malformed body
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "500":
+          description: Audio endpoint refused the change
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /audio/mute:
+    post:
+      operationId: setMute
+      summary: Set the master mute state
+      security:
+        - deviceToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SetMutePayload" }
+      responses:
+        "200":
+          description: New audio state
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VolumeStatus" }
+        "400":
+          description: Malformed body
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "500":
+          description: Audio endpoint refused the change
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /input/mouse:
+    post:
+      operationId: injectMouse
+      summary: Inject mouse motion, click, button state or scroll
+      description: |
+        Primary transport is the WebSocket (`input.mouse_move`,
+        `input.mouse_click`, `input.mouse_scroll`, `input.mouse`); this route
+        exists for tooling and for clients without a socket.
+      security:
+        - deviceToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MousePayload" }
+      responses:
+        "200":
+          description: Event injected
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessResponse" }
+        "400":
+          description: Malformed body
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "500":
+          description: SendInput failed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /input/keyboard:
+    post:
+      operationId: injectKeyboard
+      summary: Inject a keystroke, key state or Unicode text
+      security:
+        - deviceToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/KeyboardPayload" }
+      responses:
+        "200":
+          description: Event injected
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessResponse" }
+        "400":
+          description: Malformed body
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "500":
+          description: SendInput failed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /clipboard:
+    get:
+      operationId: getClipboard
+      summary: Read the system clipboard text
+      security:
+        - deviceToken: []
+      responses:
+        "200":
+          description: Current clipboard text (may be empty)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ClipboardPayload" }
+        "401":
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "500":
+          description: Clipboard unavailable
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    post:
+      operationId: setClipboard
+      summary: Replace the system clipboard text
+      security:
+        - deviceToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ClipboardPayload" }
+      responses:
+        "200":
+          description: Clipboard written
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessResponse" }
+        "400":
+          description: Malformed body
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "500":
+          description: Clipboard unavailable
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
 components:
   securitySchemes:
     deviceToken:
       type: http
       scheme: bearer
       description: |
-        Device token issued during pairing. Required for protected endpoints.
+        Device token issued during pairing. Required for protected endpoints,
+        except from a loopback caller where the agent treats the request as the
+        machine's own user.
 
 
   schemas:
@@ -230,6 +589,12 @@ components:
             message:
               type: string
               description: Human-readable, safe to display; never contains internals
+
+    SuccessResponse:
+      type: object
+      required: [success]
+      properties:
+        success: { type: boolean, const: true }
 
     HealthResponse:
       type: object
@@ -291,6 +656,39 @@ components:
                 heap_sys_bytes: { type: integer, format: int64 }
                 sys_bytes: { type: integer, format: int64 }
                 num_gc: { type: integer, format: int64 }
+
+    DiscoveryInfoResponse:
+      type: object
+      required: [agent_name, version, hostname, addresses, port, tls_enabled]
+      properties:
+        agent_name: { type: string, example: TUF Remote }
+        version: { type: string }
+        hostname: { type: string }
+        addresses:
+          type: array
+          items: { type: string, format: ipv4 }
+        port: { type: integer, minimum: 1, maximum: 65535 }
+        tls_enabled: { type: boolean }
+
+    DiscoveryQRPayload:
+      type: object
+      required: [agent_name, version, hostname, ip_addresses, port, tls_enabled]
+      properties:
+        agent_name: { type: string }
+        version: { type: string }
+        hostname: { type: string }
+        ip_addresses:
+          type: array
+          items: { type: string, format: ipv4 }
+        port: { type: integer, minimum: 1, maximum: 65535 }
+        tls_enabled: { type: boolean }
+        session_id:
+          type: string
+          description: Present only when a pairing session was supplied
+        pin:
+          type: string
+          pattern: '^[0-9]{6}$'
+          description: Present only when a PIN was supplied
 
     StartPairingResponse:
       type: object
@@ -388,3 +786,149 @@ components:
       required: [token]
       properties:
         token: { $ref: "#/components/schemas/TokenInfo" }
+
+    SystemMetrics:
+      type: object
+      required: [cpu, memory, battery]
+      properties:
+        cpu:
+          type: object
+          required: [usage_percent]
+          properties:
+            usage_percent: { type: number, minimum: 0, maximum: 100 }
+        memory:
+          type: object
+          required: [total_bytes, available_bytes, used_bytes, usage_percent]
+          properties:
+            total_bytes: { type: integer, format: int64, minimum: 0 }
+            available_bytes: { type: integer, format: int64, minimum: 0 }
+            used_bytes: { type: integer, format: int64, minimum: 0 }
+            usage_percent: { type: number, minimum: 0, maximum: 100 }
+        battery:
+          type: object
+          required: [present, charging, percentage]
+          properties:
+            present: { type: boolean }
+            charging: { type: boolean }
+            percentage: { type: integer, minimum: 0, maximum: 100 }
+            life_time_seconds:
+              type: integer
+              format: int64
+              description: Omitted when the platform cannot report it
+        disks:
+          type: array
+          description: Omitted when no logical drive is readable
+          items: { $ref: "#/components/schemas/DiskMetrics" }
+
+    DiskMetrics:
+      type: object
+      required: [mount, total_bytes, free_bytes, used_bytes, usage_percent]
+      properties:
+        mount: { type: string, example: "C:" }
+        total_bytes: { type: integer, format: int64, minimum: 0 }
+        free_bytes: { type: integer, format: int64, minimum: 0 }
+        used_bytes: { type: integer, format: int64, minimum: 0 }
+        usage_percent: { type: number, minimum: 0, maximum: 100 }
+
+    PowerLockResponse:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [locked] }
+
+    PowerRequestPayload:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum: [sleep, hibernate, restart, shutdown]
+          description: Locking is not accepted here; use POST /power/lock
+
+    PowerRequestResponse:
+      type: object
+      required: [confirmation_token, action, expires_at]
+      properties:
+        confirmation_token:
+          type: string
+          description: Single-use token, valid for 30 seconds
+        action:
+          type: string
+          enum: [sleep, hibernate, restart, shutdown]
+        expires_at: { type: string, format: date-time }
+
+    PowerConfirmPayload:
+      type: object
+      required: [confirmation_token]
+      properties:
+        confirmation_token: { type: string }
+
+    PowerConfirmResponse:
+      type: object
+      required: [action, status]
+      properties:
+        action:
+          type: string
+          enum: [sleep, hibernate, restart, shutdown]
+        status: { type: string, enum: [initiated] }
+
+    VolumeStatus:
+      type: object
+      required: [level, muted]
+      properties:
+        level: { type: integer, minimum: 0, maximum: 100 }
+        muted: { type: boolean }
+
+    SetVolumePayload:
+      type: object
+      required: [level]
+      properties:
+        level: { type: integer, minimum: 0, maximum: 100 }
+
+    SetMutePayload:
+      type: object
+      required: [muted]
+      properties:
+        muted: { type: boolean }
+
+    MousePayload:
+      type: object
+      properties:
+        action:
+          type: string
+          enum: [move, click, down, up, scroll]
+          description: Omitted actions fall back to move (dx/dy) or click (button)
+        button:
+          type: string
+          enum: [left, right, middle]
+        dx: { type: integer, description: Relative X motion }
+        dy: { type: integer, description: Relative Y motion, or wheel notches for scroll }
+        x: { type: integer, description: "Absolute X, used with absolute" }
+        y: { type: integer, description: "Absolute Y, used with absolute" }
+        absolute: { type: boolean, default: false }
+        double: { type: boolean, default: false }
+
+    KeyboardPayload:
+      type: object
+      properties:
+        action:
+          type: string
+          enum: [tap, down, up, text]
+        key:
+          type: string
+          description: Lower-case key name (enter, backspace, tab, esc, space, a–z, 0–9, f1–f12, punctuation, arrows, home/end/pageup/pagedown/insert/delete/capslock)
+        modifiers:
+          type: array
+          description: Held around a tap
+          items:
+            type: string
+            enum: [ctrl, alt, shift, win]
+        text:
+          type: string
+          description: Unicode text for the `text` action
+
+    ClipboardPayload:
+      type: object
+      required: [text]
+      properties:
+        text: { type: string }
