@@ -1,5 +1,8 @@
 /**
  * Screen shell: dark console background + safe-area handling.
+ *
+ * Content is centred and capped at `MAX_CONTENT_WIDTH` so layouts stay
+ * readable on tablets and in landscape; phones simply use the full width.
  * `scroll` wraps content in a ScrollView tuned for forms (keyboard stays
  * out of the way of the focused field and taps are not swallowed).
  */
@@ -14,6 +17,9 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+
+/** Readable measure for tablets and landscape phones. */
+const MAX_CONTENT_WIDTH = 760;
 
 export interface ScreenProps {
   children: ReactNode;
@@ -30,10 +36,12 @@ export function Screen({ children, scroll = false, style }: ScreenProps) {
       <SafeAreaView
         className="flex-1 bg-bg"
         edges={['top', 'bottom']}>
-        <View
-          className="flex-1 gap-6 px-5 pt-4"
-          style={style}>
-          {children}
+        <View className="flex-1 w-full items-center">
+          <View
+            className="flex-1 w-full gap-6 px-5 pt-4"
+            style={[{ maxWidth: MAX_CONTENT_WIDTH }, style]}>
+            {children}
+          </View>
         </View>
       </SafeAreaView>
     );
@@ -48,8 +56,8 @@ export function Screen({ children, scroll = false, style }: ScreenProps) {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={keyboardOffset}>
         <ScrollView
-          contentContainerClassName="gap-6 px-5 pt-4 pb-10"
-          contentContainerStyle={style}
+          contentContainerClassName="w-full self-center gap-6 px-5 pt-4 pb-10"
+          contentContainerStyle={[{ maxWidth: MAX_CONTENT_WIDTH }, style]}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
           onLayout={(event) =>

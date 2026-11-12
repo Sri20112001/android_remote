@@ -5,6 +5,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { tabBarBottomInset } from '@/hooks/use-tab-bar-clearance';
+import { Color } from '@/theme/tokens';
 
 interface TabItemProps {
   routeName: string;
@@ -83,30 +84,39 @@ const TabRadioItem = React.memo(function TabRadioItem({
   }, [isFocused, scale, glowOpacity]);
 
   const { icon, label } = getTabConfig(routeName, isFocused);
-  const activeColor = '#CAF300';
-  const inactiveColor = '#64748B';
+  const activeColor = Color.accent;
+  const inactiveColor = Color.textDim || '#81766B';
 
   return (
     <TouchableOpacity
       activeOpacity={0.75}
       onPress={onPress}
       onLongPress={onLongPress}
-      className={`relative flex-1 h-14 items-center justify-center rounded-2xl border transition-all ${
+      style={
         isFocused
-          ? 'bg-[#121722] border-[#CAF300]/30 shadow-md shadow-black'
-          : 'bg-transparent border-transparent'
+          ? {
+              backgroundColor: Color.surfaceHigh || '#292522',
+              borderColor: `${Color.accent}4D`,
+            }
+          : undefined
+      }
+      className={`relative flex-1 h-14 items-center justify-center rounded-2xl border transition-all ${
+        isFocused ? 'shadow-md shadow-black' : 'bg-transparent border-transparent'
       }`}
     >
       {/* Laser Top Indicator Line */}
       {isFocused && (
-        <View className="absolute top-1 w-5 h-[2px] rounded-full bg-[#CAF300]" />
+        <View
+          style={{ backgroundColor: Color.accent }}
+          className="absolute top-1 w-5 h-[2px] rounded-full"
+        />
       )}
 
       {/* Subtle Glow behind the active icon */}
       <Animated.View
         pointerEvents="none"
-        className="absolute w-8 h-8 rounded-full bg-[#CAF300]/10"
-        style={{ opacity: glowOpacity }}
+        style={{ opacity: glowOpacity, backgroundColor: `${Color.accent}1A` }}
+        className="absolute w-8 h-8 rounded-full"
       />
 
       <Animated.View
@@ -119,8 +129,9 @@ const TabRadioItem = React.memo(function TabRadioItem({
           color={isFocused ? activeColor : inactiveColor}
         />
         <Text
+          style={{ color: isFocused ? Color.accent : inactiveColor }}
           className={`font-mono text-[9px] mt-0.5 tracking-wider ${
-            isFocused ? 'text-[#CAF300] font-black' : 'text-zinc-500 font-medium'
+            isFocused ? 'font-black' : 'font-medium'
           }`}
         >
           {label}
@@ -142,11 +153,21 @@ const FloatingRadioTabBar = (props: any) => {
   return (
     <View
       pointerEvents="box-none"
-      className="absolute bottom-0 left-0 right-0 items-center justify-center px-4 bg-transparent"
-      style={{ paddingBottom: tabBarBottomInset(insets) }}
+      className="absolute bottom-0 left-0 right-0 items-center justify-center bg-transparent"
+      style={{
+        paddingBottom: tabBarBottomInset(insets),
+        paddingLeft: Math.max(insets.left, 16),
+        paddingRight: Math.max(insets.right, 16),
+      }}
     >
       {/* Outer Tactical Cockpit Dock */}
-      <View className="flex-row w-full bg-[#080B11]/95  shadow-2xl shadow-black">
+      <View
+        style={{
+          backgroundColor: Color.bg,
+          borderColor: Color.border,
+        }}
+        className="flex-row w-full max-w-[560px] overflow-hidden rounded-3xl border shadow-2xl shadow-black"
+      >
         {state.routes.map((route: any, index: number) => {
           const isFocused = state.index === index;
 

@@ -23,6 +23,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 
@@ -34,6 +35,7 @@ import { Field } from '@/components/field';
 import { Pill } from '@/components/pill';
 import { Screen } from '@/components/screen';
 import { useSession } from '@/auth/session';
+import { ENV_AGENT_URL } from '@/config/constants';
 import { parseAddressInput } from '@/connection/address';
 import { parseQrData } from '@/connection/qr';
 import { Color, FontFamily, Radius, Spacing, TouchTarget, Type } from '@/theme/tokens';
@@ -84,13 +86,28 @@ export default function ConnectScreen() {
   const [permission, requestPermission] = useCameraPermissions();
 
   const [tab, setTab] = useState<Tab>('scan');
-  const [manualText, setManualText] = useState('');
+  const [manualText, setManualText] = useState(ENV_AGENT_URL);
   const [target, setTarget] = useState<Target | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [probing, setProbing] = useState(false);
   const [torch, setTorch] = useState(false);
   const [reduceMotion, setReduceMotion] = useState(false);
   const [scanningActive, setScanningActive] = useState(true);
+
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+
+  // Backend configured for this build (`.env` → `EXPO_PUBLIC_AGENT_URL`).
+  // When present, the screen probes it on mount so the usual path is
+  // "open app → pair", with no URL typing or QR scan required.
+  const envOrigin = useMemo(() => {
+    if (ENV_AGENT_URL === '') return null;
+    const parsed = parseAddressInput(ENV_AGENT_URL);
+    return parsed.ok ? parsed.origin : null;
+  }, []);
+  const [envState, setEnvState] = useState<'checking' | 'online' | 'offline' | 'idle'>(
+    envOrigin === null ? 'idle' : 'checking',
+  );
+  const autoConnectTried = useRef(false);
 
   const scanLocked = useRef(false);
   const isProcessing = useRef(false);
@@ -143,6 +160,48 @@ export default function ConnectScreen() {
     animation.start();
     return () => animation.stop();
   }, [reduceMotion, scanLine]);
+
+  // One silent probe against the configured backend. On success we move
+  // straight to the PIN screen; on failure the screen stays usable and the
+  // configured-address card offers a retry.
+  useEffect(() => {
+    if (envOrigin === null || autoConnectTried.current) return undefined;
+
+    autoConnectTried.current = true;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        await new AgentClient({ origin: envOrigin }).getHealth();
+        if (cancelled) return;
+        setEnvState('online');
+        session.beginConnect(envOrigin);
+        router.push('/pair');
+      } catch {
+        if (!cancelled) setEnvState('offline');
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [envOrigin, session, router]);
+
+  const connectToEnv = useCallback(async () => {
+    if (envOrigin === null) return;
+
+    setError(null);
+    setEnvState('checking');
+    try {
+      await new AgentClient({ origin: envOrigin }).getHealth();
+      setEnvState('online');
+      session.beginConnect(envOrigin);
+      router.push('/pair');
+    } catch (probeError) {
+      setEnvState('offline');
+      setError(messageOf(probeError));
+    }
+  }, [envOrigin, session, router]);
 
   const onBarcodeScanned = useCallback(
     async ({ data }: { data: string }) => {
@@ -230,9 +289,23 @@ export default function ConnectScreen() {
     }
   }, [tab, target, manualText, session, router]);
 
+  // Keep the scanner square but bounded by the viewport, so landscape
+  // phones and tablets do not get a code box taller than the screen.
+  const cameraSize = Math.round(
+    Math.min(windowWidth - 40, 460, Math.max(220, windowHeight * 0.62)),
+  );
+
   const cameraBox = (() => {
     if (permission === null) {
-      return <View style={styles.cameraPending} accessibilityLabel="Checking camera permission" />;
+      return (
+        <View
+          style={[
+            styles.cameraPending,
+            { width: cameraSize, height: cameraSize, alignSelf: 'center' },
+          ]}
+          accessibilityLabel="Checking camera permission"
+        />
+      );
     }
     if (!permission.granted) {
       return (
@@ -260,7 +333,11 @@ export default function ConnectScreen() {
     }
 
     return (
-      <View style={styles.cameraFrame}>
+      <View
+        style={[
+          styles.cameraFrame,
+          { width: cameraSize, height: cameraSize, alignSelf: 'center' },
+        ]}>
         <CameraView
           style={StyleSheet.absoluteFill}
           facing="back"
@@ -320,9 +397,43 @@ export default function ConnectScreen() {
         <MonoLabel>Step 1 // link</MonoLabel>
         <Text style={styles.title}>CONNECT TO PC</Text>
         <Text style={styles.subtitle}>
-          Scan the QR code on your PC, or enter the agent address directly.
+          {envOrigin === null
+            ? 'Scan the QR code on your PC, or enter the agent address directly.'
+            : 'This build already knows your PC. Scan its QR code to switch, or connect to the configured address below.'}
         </Text>
       </View>
+
+      {envOrigin !== null && (
+        <Card>
+          <View style={styles.targetHeader}>
+            <MonoLabel>Configured backend</MonoLabel>
+            <Pill
+              label={
+                envState === 'online'
+                  ? 'Reachable'
+                  : envState === 'offline'
+                    ? 'Offline'
+                    : 'Checking'
+              }
+              tone={
+                envState === 'online' ? 'ok' : envState === 'offline' ? 'danger' : 'neutral'
+              }
+            />
+          </View>
+          <Text style={styles.targetName}>Your workstation</Text>
+          <Text style={styles.targetOrigin} numberOfLines={1} ellipsizeMode="middle">
+            {envOrigin}
+          </Text>
+          <Button
+            label={envState === 'offline' ? 'Try again' : 'Connect'}
+            icon="arrow-right"
+            variant="ghost"
+            loading={envState === 'checking'}
+            disabled={envState === 'checking'}
+            onPress={connectToEnv}
+          />
+        </Card>
+      )}
 
       <View style={styles.tabs} accessibilityRole="tablist">
         <TabButton

@@ -140,59 +140,30 @@ export default function MediaStudioScreen() {
       contentContainerStyle={{ paddingBottom: tabBarClearance }}
     >
       <View className="px-3.5 gap-3">
-        {/* Top Bus Header */}
-        <View className="bg-[#10141D] rounded-[14px] p-3 border border-[#1E2538] gap-2">
-          <View className="flex-row justify-between items-center">
-            <View className="flex-row items-center gap-1.5">
-              <Animated.View
-                className="w-1.5 h-1.5 rounded-full bg-[#CAF300]"
-                style={{ opacity: busPulse }}
-              />
-              <Text className="text-[#F1F5F9] text-xs font-bold tracking-wide font-mono">
-                {'// MASTER_AUDIO_BUS'}
-              </Text>
-            </View>
-            <View className="flex-row items-center gap-1 bg-[#1E293B] px-2 py-0.5 rounded-md">
-              <MaterialCommunityIcons name="tune" size={12} color="#CAF300" />
-              <Text className="text-[#CAF300] text-[9px] font-bold font-mono">
-                WASAPI DIRECT
-              </Text>
-            </View>
-          </View>
 
-          <View className="flex-row items-center gap-1.5 bg-[#090C12] px-2.5 py-1.5 rounded-lg">
-            <MaterialCommunityIcons name="equalizer" size={14} color="#CAF300" />
-            <Text className="flex-1 text-[#94A3B8] text-[11px] font-mono" numberOfLines={1}>
-              WINDOWS CORE AUDIO // 24-BIT MASTER
-            </Text>
-            <Text className="text-[#CAF300] text-[9px] font-bold bg-[#17202A] px-1.5 py-0.5 rounded">
-              ACTIVE
-            </Text>
-          </View>
-        </View>
 
         {/* Main Console Deck */}
-        <View className="bg-[#10141D] rounded-2xl p-3.5 border border-[#1E2538] gap-3">
-          <View className="flex-row justify-between items-center">
+        {/* <View className="bg-[#10141D] rounded-2xl p-3.5 border border-[#1E2538] gap-3"> */}
+          {/* <View className="flex-row justify-between items-center">
             <Text className="text-[#64748B] text-[10px] font-bold font-mono">
               ANALOG STAGE // DECK 01
             </Text>
             <Text className="text-[#CAF300] text-[11px] font-bold font-mono">
               LEVEL: {dbfs} dBFS
             </Text>
-          </View>
+          </View> */}
 
-          <View className="flex-row gap-3">
+          {/* <View className="flex-row gap-3">
             <StereoVuMeter volume={volume} isMuted={isMuted} />
             <MasterFader
               volume={volume}
               isDragging={isDragging}
               panHandlers={panResponder.panHandlers}
             />
-          </View>
+          </View> */}
 
           {/* Quick Level Snap Buttons */}
-          <View className="flex-row gap-1.5">
+          {/* <View className="flex-row gap-1.5">
             {[0, 25, 50, 75, 100].map((lvl) => (
               <TouchableOpacity
                 key={lvl}
@@ -212,11 +183,11 @@ export default function MediaStudioScreen() {
                 </Text>
               </TouchableOpacity>
             ))}
-          </View>
-        </View>
+          </View> */}
+        {/* </View> */}
 
         {/* Tactical TV Remote Card */}
-        <View className="bg-[#10141D] rounded-[20px] p-4 border border-[#1E2538] gap-3.5 shadow-lg">
+        <View className="bg-[#10141D] gap-3.5ff">
           <View className="flex-row justify-between items-center">
             <View className="flex-row items-center gap-1.5">
               <View className="w-[7px] h-[7px] rounded-full bg-[#CAF300] shadow-sm" />

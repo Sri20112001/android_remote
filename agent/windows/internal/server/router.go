@@ -137,6 +137,8 @@ func NewRouter(deps RouterDependencies) *gin.Engine {
 		}
 
 		api.POST("/files/upload", auth, handleFileUpload(deps.Logger))
+		api.GET("/files/download/:filename", handleFileDownload(deps.Logger))
+		api.GET("/files/list", auth, handleFileList(deps.Logger))
 	}
 
 	engine.HandleMethodNotAllowed = true
@@ -237,4 +239,62 @@ func handleFileUpload(logger *slog.Logger) gin.HandlerFunc {
 		})
 	}
 }
+
+// handleFileDownload serves files from Downloads directory to authorized mobile devices.
+func handleFileDownload(logger *slog.Logger) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		filename := c.Param("filename")
+		filename = filepath.Base(filename)
+		filename = strings.ReplaceAll(filename, "..", "")
+
+		userProfile := os.Getenv("USERPROFILE")
+		if userProfile == "" {
+			userProfile = "."
+		}
+		filePath := filepath.Join(userProfile, "Downloads", filename)
+
+		if _, err := os.Stat(filePath); os.IsNotExist(err) {
+			logger.Warn("file download not found", "filename", filename)
+			utils.RespondError(c, http.StatusNotFound, constants.CodeNotFound, "file not found")
+			return
+		}
+
+		logger.Info("streaming file download to client", "filename", filename)
+		c.FileAttachment(filePath, filename)
+	}
+}
+
+// handleFileList lists recently saved beamed files in Downloads directory.
+func handleFileList(logger *slog.Logger) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userProfile := os.Getenv("USERPROFILE")
+		if userProfile == "" {
+			userProfile = "."
+		}
+		downloadsDir := filepath.Join(userProfile, "Downloads")
+		entries, err := os.ReadDir(downloadsDir)
+		if err != nil {
+			logger.Error("failed to read downloads directory", "error", err)
+			utils.RespondError(c, http.StatusInternalServerError, constants.CodeInternal, "failed to read files")
+			return
+		}
+
+		var files []gin.H
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				info, err := entry.Info()
+				if err == nil {
+					files = append(files, gin.H{
+						"name":     entry.Name(),
+						"size":     info.Size(),
+						"modified": info.ModTime().Unix(),
+					})
+				}
+			}
+		}
+
+		c.JSON(http.StatusOK, gin.H{"files": files})
+	}
+}
+
 

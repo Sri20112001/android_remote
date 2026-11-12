@@ -73,6 +73,34 @@ describe('parseQrData', () => {
     expect(parseQrData('{not json').kind).toBe('error');
     expect(parseQrData('').kind).toBe('error');
   });
+
+  it('names the Expo dev-server QR instead of giving the generic refusal', () => {
+    const result = parseQrData('exp://192.168.1.9:8081');
+    expect(result.kind).toBe('error');
+    if (result.kind !== 'error') return;
+    expect(result.reason).toMatch(/Expo/i);
+  });
+
+  it('reports why a URL-shaped code was refused', () => {
+    const result = parseQrData('http://192.168.1.9:8765/pair?pin=123456');
+    expect(result.kind).toBe('error');
+    if (result.kind !== 'error') return;
+    expect(result.reason).toMatch(/path/i);
+  });
+
+  it('accepts the /discovery/info field names and the `tls` alias', () => {
+    const result = parseQrData(
+      JSON.stringify({
+        agent_name: 'TUF Remote',
+        version: '0.1.0',
+        hostname: 'WIN11-PC',
+        addresses: ['10.0.0.7'],
+        port: 8765,
+        tls: true,
+      }),
+    );
+    expect(result.kind === 'payload' && result.origin).toBe('https://10.0.0.7:8765');
+  });
 });
 
 describe('originFromPayload', () => {

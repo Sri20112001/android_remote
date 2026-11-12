@@ -7,6 +7,8 @@ import {
   GestureResponderEvent,
   PanResponderGestureState,
   Animated,
+  Modal,
+  Pressable,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -131,6 +133,23 @@ function endDrag(gesture: PadGesture, onReleased: () => void): boolean {
   return true;
 }
 
+interface DpiPreset {
+  label: string;
+  dpi: number;
+  val: number;
+  desc: string;
+  color: string;
+}
+
+const DPI_PRESETS: DpiPreset[] = [
+  { label: 'SNIPER', dpi: 400, val: 0.5, desc: 'Pixel Precision', color: '#EF4444' },
+  { label: 'PRECISION', dpi: 800, val: 0.75, desc: 'Design & Detail', color: '#F97316' },
+  { label: 'BALANCED', dpi: 1200, val: 1.0, desc: 'Standard Desktop', color: '#CAF300' },
+  { label: 'FAST', dpi: 1600, val: 1.4, desc: 'Swift Dual-Monitor', color: '#06B6D4' },
+  { label: 'PRO', dpi: 2400, val: 2.0, desc: 'High-Speed Reflex', color: '#A855F7' },
+  { label: 'HYPER', dpi: 3200, val: 2.8, desc: 'Ultra-Wide Panoramic', color: '#EC4899' },
+];
+
 export default function TrackpadScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -148,10 +167,51 @@ export default function TrackpadScreen() {
   } = useAgentWS();
 
   const [sensitivity, setSensitivity] = useState<number>(1.0);
+  const [currentDpi, setCurrentDpi] = useState<number>(1200);
+  const [showDpiModal, setShowDpiModal] = useState<boolean>(false);
+  const [dpiToast, setDpiToast] = useState<string | null>(null);
   const [isAirMouseActive, setIsAirMouseActive] = useState<boolean>(false);
   const [showMacroDeck, setShowMacroDeck] = useState<boolean>(false);
   const [clipboardStatus, setClipboardStatus] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState<boolean>(false);
+
+  const activePreset =
+    DPI_PRESETS.find((p) => p.dpi === currentDpi) || {
+      label: 'CUSTOM',
+      dpi: currentDpi,
+      val: parseFloat((currentDpi / 1200).toFixed(2)),
+      desc: `${(currentDpi / 1200).toFixed(2)}x Gain`,
+      color: '#CAF300',
+    };
+
+  const cycleDpi = () => {
+    triggerHaptic.selection();
+    const currentIndex = DPI_PRESETS.findIndex((p) => p.dpi === currentDpi);
+    const nextIndex = (currentIndex + 1) % DPI_PRESETS.length;
+    const next = DPI_PRESETS[nextIndex];
+    setCurrentDpi(next.dpi);
+    setSensitivity(next.val);
+    setDpiToast(`${next.dpi} DPI // ${next.label}`);
+    setTimeout(() => setDpiToast(null), 1800);
+  };
+
+  const selectDpiPreset = (preset: DpiPreset) => {
+    triggerHaptic.selection();
+    setCurrentDpi(preset.dpi);
+    setSensitivity(preset.val);
+    setDpiToast(`${preset.dpi} DPI // ${preset.label}`);
+    setTimeout(() => setDpiToast(null), 1800);
+  };
+
+  const adjustDpi = (delta: number) => {
+    triggerHaptic.selection();
+    const next = Math.max(200, Math.min(4000, currentDpi + delta));
+    const val = parseFloat((next / 1200).toFixed(2));
+    setCurrentDpi(next);
+    setSensitivity(val);
+    setDpiToast(`${next} DPI // CUSTOM`);
+    setTimeout(() => setDpiToast(null), 1800);
+  };
 
   // Animation values
   const [pulseAnim] = useState(() => new Animated.Value(0.35));
@@ -469,47 +529,40 @@ export default function TrackpadScreen() {
             )}
           </View>
 
-          <View>
+          {/* <View>
             <View className="flex-row items-center gap-1.5">
               <Text className="text-zinc-100 font-mono text-xs font-black tracking-widest">
                 {isConnected ? 'NODE-ONLINE' : connectionState.toUpperCase()}
               </Text>
-              <View className="bg-zinc-900 border border-zinc-800 px-1 rounded">
-                <Text className="text-[9px] font-mono text-zinc-500">OPTICAL 1K</Text>
-              </View>
             </View>
             <Text className="text-zinc-600 font-mono text-[9px] tracking-wider uppercase">
               CHASSIS // PERIPHERAL MODE
             </Text>
-          </View>
+          </View> */}
         </View>
 
         {/* DPI & Quick Keyboard */}
         <View className="flex-row items-center gap-1 bg-[#0A0D15] p-1 rounded-xl border border-zinc-800/90 shadow-sm">
-          {[
-            { label: '800', val: 0.7 },
-            { label: '1200', val: 1.0 },
-            { label: '2400', val: 2.2 },
-          ].map((item) => (
-            <TouchableOpacity
-              key={item.label}
-              onPress={() => {
-                triggerHaptic.selection();
-                setSensitivity(item.val);
-              }}
-              className={`px-2 py-1 rounded-lg ${
-                sensitivity === item.val ? 'bg-[#CAF300]' : 'bg-transparent'
-              }`}
-            >
-              <Text
-                className={`font-mono text-[10px] font-bold ${
-                  sensitivity === item.val ? 'text-black' : 'text-zinc-400'
-                }`}
-              >
-                {item.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
+          <TouchableOpacity
+            onPress={cycleDpi}
+            onLongPress={() => {
+              triggerHaptic.medium();
+              setShowDpiModal(true);
+            }}
+            className="flex-row items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-800 active:bg-zinc-800"
+          >
+            <View
+              className="w-1.5 h-1.5 rounded-full"
+              style={{ backgroundColor: activePreset.color }}
+            />
+            <Text className="font-mono text-[10px] font-bold text-zinc-100">
+              {currentDpi}
+            </Text>
+            <Text className="font-mono text-[8px] font-bold text-zinc-500">
+              DPI
+            </Text>
+            <MaterialCommunityIcons name="tune-variant" size={12} color="#8E8E93" />
+          </TouchableOpacity>
 
           <View className="w-[1px] h-3.5 bg-zinc-800 mx-0.5" />
 
@@ -688,14 +741,29 @@ export default function TrackpadScreen() {
           </Animated.View>
         </View>
 
-        {/* ── Optical Separation Seam ── */}
-        <View className="flex-row items-center justify-center my-1.5 gap-2">
+        {/* ── Optical Separation Seam with Hardware-Style DPI Switcher ── */}
+        <View className="flex-row items-center justify-center my-1.5 gap-2 px-1">
           <View className="flex-1 h-[1px] bg-zinc-800/80" />
-          <View className="w-1.5 h-1.5 rounded-full bg-zinc-700" />
-          <Text className="text-zinc-600 font-mono text-[8px] tracking-widest uppercase">
-            SENSOR SURFACE
-          </Text>
-          <View className="w-1.5 h-1.5 rounded-full bg-zinc-700" />
+          <TouchableOpacity
+            onPress={cycleDpi}
+            onLongPress={() => {
+              triggerHaptic.medium();
+              setShowDpiModal(true);
+            }}
+            className="flex-row items-center gap-1.5 px-3 py-1 rounded-full bg-[#111624] border border-zinc-700 active:border-[#CAF300] active:scale-95 shadow-sm"
+          >
+            <View
+              className="w-1.5 h-1.5 rounded-full"
+              style={{ backgroundColor: activePreset.color }}
+            />
+            <Text className="text-zinc-200 font-mono text-[9px] font-black tracking-wider">
+              DPI {currentDpi}
+            </Text>
+            <Text className="text-zinc-500 font-mono text-[8px] font-bold">
+              // {activePreset.label}
+            </Text>
+            <MaterialCommunityIcons name="swap-vertical" size={12} color="#8E8E93" />
+          </TouchableOpacity>
           <View className="flex-1 h-[1px] bg-zinc-800/80" />
         </View>
 
@@ -706,6 +774,19 @@ export default function TrackpadScreen() {
           }`}
           {...panResponder.panHandlers}
         >
+          {/* Floating Quick DPI Notification Badge */}
+          {dpiToast && (
+            <View className="absolute top-3 self-center z-50 bg-[#0B0F17]/95 border border-[#CAF300]/80 px-4 py-1.5 rounded-full shadow-2xl flex-row items-center gap-1.5 pointer-events-none">
+              <View
+                className="w-2 h-2 rounded-full"
+                style={{ backgroundColor: activePreset.color }}
+              />
+              <Text className="text-[#CAF300] font-mono text-xs font-black tracking-widest">
+                {dpiToast}
+              </Text>
+            </View>
+          )}
+
           {/* Animated Glow Wave on Touch */}
           <Animated.View
             pointerEvents="none"
@@ -751,6 +832,138 @@ export default function TrackpadScreen() {
           <View className="absolute bottom-2 w-24 h-1 rounded-full bg-zinc-800/70" />
         </View>
       </View>
+
+      {/* ── DPI SENSOR CALIBRATION MODAL ── */}
+      <Modal
+        visible={showDpiModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowDpiModal(false)}
+      >
+        <Pressable
+          className="flex-1 bg-black/80 justify-center items-center px-4"
+          onPress={() => setShowDpiModal(false)}
+        >
+          <Pressable
+            className="w-full max-w-sm bg-[#0C1019] border border-zinc-700/80 rounded-3xl p-5 shadow-2xl"
+            onPress={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <View className="flex-row items-center justify-between pb-3 border-b border-zinc-800">
+              <View className="flex-row items-center gap-2">
+                <View className="w-8 h-8 rounded-lg bg-[#CAF300]/15 border border-[#CAF300]/30 items-center justify-center">
+                  <MaterialCommunityIcons name="target" size={18} color="#CAF300" />
+                </View>
+                <View>
+                  <Text className="text-zinc-100 font-mono text-xs font-black tracking-wider">
+                    DPI CALIBRATION MATRIX
+                  </Text>
+                  <Text className="text-zinc-500 font-mono text-[9px]">
+                    OPTICAL SENSOR SENSITIVITY
+                  </Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                onPress={() => setShowDpiModal(false)}
+                className="p-1 rounded-lg bg-zinc-800/80 border border-zinc-700 text-zinc-400"
+              >
+                <MaterialCommunityIcons name="close" size={16} color="#94A3B8" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Live Readout & Micro-Steppers */}
+            <View className="my-5 p-4 rounded-2xl bg-[#07090F] border border-zinc-800 items-center">
+              <Text className="text-zinc-500 font-mono text-[9px] font-bold tracking-widest uppercase">
+                ACTIVE SENSITIVITY
+              </Text>
+              <View className="flex-row items-baseline gap-2 mt-1">
+                <Text
+                  className="font-mono text-3xl font-black"
+                  style={{ color: activePreset.color }}
+                >
+                  {currentDpi}
+                </Text>
+                <Text className="text-zinc-500 font-mono text-xs font-bold">DPI</Text>
+              </View>
+              <Text className="text-zinc-400 font-mono text-[10px] mt-0.5">
+                {(currentDpi / 1200).toFixed(2)}x Gain Multiplier • {activePreset.label}
+              </Text>
+
+              {/* Quick - / + 100 Stepper */}
+              <View className="flex-row items-center gap-3 mt-4">
+                <TouchableOpacity
+                  onPress={() => adjustDpi(-100)}
+                  className="px-3 py-1.5 rounded-lg bg-zinc-800 border border-zinc-700 active:bg-zinc-700"
+                >
+                  <Text className="text-zinc-200 font-mono text-xs font-bold">- 100</Text>
+                </TouchableOpacity>
+
+                <View className="px-3 py-1 rounded-md bg-zinc-900 border border-zinc-800">
+                  <Text className="text-zinc-500 font-mono text-[10px]">STEPPER</Text>
+                </View>
+
+                <TouchableOpacity
+                  onPress={() => adjustDpi(100)}
+                  className="px-3 py-1.5 rounded-lg bg-zinc-800 border border-zinc-700 active:bg-zinc-700"
+                >
+                  <Text className="text-zinc-200 font-mono text-xs font-bold">+ 100</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Preset Stage Grid */}
+            <Text className="text-zinc-400 font-mono text-[9px] font-bold tracking-wider mb-2 uppercase">
+              TACTICAL STAGE PRESETS
+            </Text>
+            <View className="flex-row flex-wrap gap-2 mb-4">
+              {DPI_PRESETS.map((p) => {
+                const isActive = currentDpi === p.dpi;
+                return (
+                  <TouchableOpacity
+                    key={p.label}
+                    onPress={() => selectDpiPreset(p)}
+                    className={`flex-1 min-w-[45%] p-2.5 rounded-xl border ${
+                      isActive
+                        ? 'bg-[#141C28] border-[#CAF300]'
+                        : 'bg-zinc-900/60 border-zinc-800 active:border-zinc-700'
+                    }`}
+                  >
+                    <View className="flex-row items-center justify-between">
+                      <View className="flex-row items-center gap-1.5">
+                        <View
+                          className="w-2 h-2 rounded-full"
+                          style={{ backgroundColor: p.color }}
+                        />
+                        <Text
+                          className={`font-mono text-xs font-black ${
+                            isActive ? 'text-[#CAF300]' : 'text-zinc-200'
+                          }`}
+                        >
+                          {p.dpi}
+                        </Text>
+                      </View>
+                      <Text className="text-zinc-500 font-mono text-[8px] font-bold">{p.label}</Text>
+                    </View>
+                    <Text className="text-zinc-400 font-mono text-[9px] mt-1" numberOfLines={1}>
+                      {p.desc}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* Apply & Close Button */}
+            <TouchableOpacity
+              onPress={() => setShowDpiModal(false)}
+              className="w-full py-3 rounded-xl bg-[#CAF300] items-center justify-center active:opacity-90"
+            >
+              <Text className="text-black font-mono text-xs font-black tracking-wider uppercase">
+                APPLY & LOCK DPI
+              </Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }

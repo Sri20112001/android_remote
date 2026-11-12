@@ -110,6 +110,23 @@ npx expo start
 npx expo start --android
 ```
 
+### 3. Point the clients at the agent
+
+Both clients read their backend from a local `.env` file (templates are
+committed as `.env.example`). Copy them once and adjust the LAN address:
+
+```bash
+# app/.env — the phone reaches the PC over Wi-Fi
+EXPO_PUBLIC_AGENT_URL=http://192.168.1.10:8765
+
+# desktop/.env — the agent's local origin
+VITE_AGENT_BASE_URL=http://127.0.0.1:8765
+```
+
+With `EXPO_PUBLIC_AGENT_URL` set, the mobile connect screen prefills the
+address and probes the PC on launch, so you do not need to type a URL or scan
+the QR code every time. Scanning a QR code still overrides it for that pairing.
+
 ---
 
 ## 🧪 Verification & Quality Gates

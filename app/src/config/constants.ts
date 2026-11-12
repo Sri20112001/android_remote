@@ -27,3 +27,13 @@ export const SESSION_STORAGE_KEY = 'remotedeck.session.v1';
 
 /** mDNS service type the agent advertises (informational; unused yet). */
 export const MDNS_SERVICE_TYPE = '_remotedeck._tcp';
+
+/**
+ * Backend origin baked in at build time from `.env`
+ * (`EXPO_PUBLIC_AGENT_URL`, see `.env.example`).
+ *
+ * Empty when unset — the connect screen then offers QR scanning and manual
+ * entry only. When set, the app prefills the address and automatically
+ * probes the PC, so scanning is not required just to reach your own machine.
+ */
+export const ENV_AGENT_URL = (process.env.EXPO_PUBLIC_AGENT_URL ?? '').trim();

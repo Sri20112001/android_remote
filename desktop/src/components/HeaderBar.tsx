@@ -1,12 +1,21 @@
 import React from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Minus, Square, X, RefreshCw, ShieldCheck, ShieldAlert } from 'lucide-react';
+import { Menu, Minus, Square, X } from 'lucide-react';
+
 import { useAppStore } from '../stores/useAppStore';
+import { navItemFor } from '../navigation';
 import { StatusPill } from './StatusPill';
 import { Logo } from './Logo';
 
 export const HeaderBar: React.FC = () => {
-  const { agentStatus, refreshAgentStatus } = useAppStore();
+  const {
+    agentStatus,
+    currentTab,
+    setMobileNavOpen,
+  } = useAppStore();
+
+  const page = navItemFor(currentTab);
+  const linkReady = agentStatus.running;
 
   const handleDragStart = (e: React.MouseEvent) => {
     // Only drag on left click and ignore clicks on buttons/interactive elements
@@ -31,68 +40,66 @@ export const HeaderBar: React.FC = () => {
     <header
       data-tauri-drag-region
       onMouseDown={handleDragStart}
-      className="h-11 bg-obsidian-950/95 backdrop-blur-md border-b border-obsidian-800/80 flex items-center justify-between select-none relative z-50 text-xs shrink-0"
+      className="relative z-50 flex h-11 shrink-0 select-none items-center justify-between border-b border-white/[0.06] bg-obsidian-950/90 text-xs backdrop-blur-md"
     >
-      {/* Left: Brand Identity & Live Status */}
-      <div className="flex items-center gap-3 pl-3 pointer-events-auto">
+      {/* Left: navigation toggle, brand, current page */}
+      <div className="pointer-events-auto flex items-center gap-2.5 pl-2 sm:pl-3">
+        <button
+          onClick={() => setMobileNavOpen(true)}
+          title="Open navigation"
+          aria-label="Open navigation"
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-white/[0.06] hover:text-slate-100 lg:hidden"
+        >
+          <Menu size={16} />
+        </button>
+
         <Logo size="xs" glow={false} />
+
         <div className="flex items-center gap-2">
-          <span className="font-bold tracking-wider text-slate-100 text-xs font-mono">
+          <span className="font-mono text-xs font-bold tracking-wider text-slate-100">
             REMOTE <span className="text-citrus">DECK</span>
           </span>
-          <span className="hidden sm:inline-block text-[10px] font-mono text-slate-400 bg-obsidian-900 px-1.5 py-0.5 rounded border border-obsidian-800">
-            WORKSTATION
+          <span className="hidden text-[10px] font-mono text-slate-500 sm:inline">
+            /
+          </span>
+          <span className="hidden font-mono text-[10px] uppercase tracking-[0.14em] text-slate-400 sm:inline">
+            {page.label}
           </span>
         </div>
 
-        <div className="hidden md:flex items-center ml-2">
-          {agentStatus.running ? (
-            <div className="flex items-center gap-1.5 text-[11px] font-mono text-slate-300">
-              <ShieldCheck size={13} className="text-citrus" />
-              <StatusPill status="online" label="DAEMON :8765" size="sm" />
-            </div>
-          ) : (
-            <div className="flex items-center gap-1.5 text-[11px] font-mono text-slate-400">
-              <ShieldAlert size={13} className="text-cyber-crimson" />
-              <StatusPill status="offline" label="DAEMON OFFLINE" size="sm" />
-            </div>
-          )}
+        <div className="ml-2 hidden md:flex">
+          <StatusPill
+            status={linkReady ? 'online' : 'standby'}
+            label={linkReady ? 'LINK READY' : 'CONNECTING'}
+            size="sm"
+          />
         </div>
       </div>
 
-      {/* Middle: Draggable Center Region */}
-      <div data-tauri-drag-region onMouseDown={handleDragStart} className="flex-1 h-full cursor-move" />
+      {/* Middle: draggable region */}
+      <div data-tauri-drag-region onMouseDown={handleDragStart} className="h-full flex-1 cursor-move" />
 
-      {/* Right: Actions & Window Controls */}
-      <div className="flex items-center h-full pointer-events-auto">
-        <button
-          onClick={() => refreshAgentStatus()}
-          title="Refresh Daemon Status"
-          className="p-1.5 mr-2 rounded-lg hover:bg-obsidian-800 text-slate-400 hover:text-slate-100 transition-colors"
-        >
-          <RefreshCw size={13} />
-        </button>
-
-        {/* Windows Standard Window Action Buttons */}
-        <div className="flex items-center h-full border-l border-obsidian-800/80">
+      {/* Right: window controls */}
+      <div className="pointer-events-auto flex h-full items-center">
+        <div className="flex h-full items-center border-l border-white/[0.06]">
           <button
             onClick={handleMinimize}
             title="Minimize"
-            className="w-11 h-full flex items-center justify-center hover:bg-obsidian-800 text-slate-400 hover:text-slate-100 transition-colors"
+            className="flex h-full w-11 items-center justify-center text-slate-400 transition-colors hover:bg-white/[0.06] hover:text-slate-100"
           >
             <Minus size={13} />
           </button>
           <button
             onClick={handleToggleMaximize}
             title="Maximize / Restore"
-            className="w-11 h-full flex items-center justify-center hover:bg-obsidian-800 text-slate-400 hover:text-slate-100 transition-colors"
+            className="flex h-full w-11 items-center justify-center text-slate-400 transition-colors hover:bg-white/[0.06] hover:text-slate-100"
           >
             <Square size={11} />
           </button>
           <button
             onClick={handleClose}
             title="Close (Minimizes to Tray)"
-            className="w-11 h-full flex items-center justify-center hover:bg-cyber-crimson text-slate-400 hover:text-white transition-colors"
+            className="flex h-full w-11 items-center justify-center text-slate-400 transition-colors hover:bg-cyber-crimson hover:text-white"
           >
             <X size={14} />
           </button>

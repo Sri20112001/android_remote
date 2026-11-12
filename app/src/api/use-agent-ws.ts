@@ -302,27 +302,42 @@ export function useAgentWS() {
   }, [client]);
 
   /**
-   * The agent has no file-transfer module, so there is no endpoint to call.
-   * Reject explicitly instead of probing a route that only answers 404 — a
-   * clear "not implemented" is honest, a silent network probe is not.
+   * Upload a file from mobile document picker to workstation agent
+   * over HTTP multipart/form-data.
    */
   const uploadFile = useCallback(
-    (
+    async (
       fileUri: string,
       fileName: string,
       mimeType: string = 'application/octet-stream',
-    ): Promise<never> => {
-      // Parameters are kept so call sites stay valid; nothing is transmitted.
-      void fileUri;
-      void fileName;
-      void mimeType;
-      return Promise.reject(
-        new Error(
-          'File transfer is not available: this agent build has no file module.',
-        ),
-      );
+    ): Promise<{ success: boolean; filename?: string }> => {
+      if (!origin || !token) {
+        throw new Error('Not connected to workstation agent');
+      }
+
+      const formData = new FormData();
+      formData.append('file', {
+        uri: fileUri,
+        name: fileName,
+        type: mimeType,
+      } as any);
+
+      const response = await fetch(`${origin}/api/v1/files/upload`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Upload failed (${response.status}): ${text}`);
+      }
+
+      return response.json();
     },
-    [],
+    [origin, token],
   );
 
   return {

@@ -3,6 +3,16 @@ import { ActivityEvent } from '../types';
 type EventListener = (event: ActivityEvent) => void;
 type ConnectionListener = (connected: boolean) => void;
 
+/**
+ * Same-origin proxy during dev (see `vite.config.ts`); direct loopback in
+ * production, matching `agentApi`.
+ */
+const WS_URL = import.meta.env.DEV
+  ? `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/agent-ws/ws`
+  : `${(import.meta.env.VITE_AGENT_BASE_URL || 'http://127.0.0.1:8765')
+      .replace(/\/+$/, '')
+      .replace(/^http/, 'ws')}/ws`;
+
 class WebSocketService {
   private ws: WebSocket | null = null;
   private eventListeners: Set<EventListener> = new Set();
@@ -15,7 +25,7 @@ class WebSocketService {
     }
 
     try {
-      this.ws = new WebSocket('ws://127.0.0.1:8765/ws');
+      this.ws = new WebSocket(WS_URL);
 
       this.ws.onopen = () => {
         this.notifyConnection(true);

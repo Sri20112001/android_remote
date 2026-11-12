@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
 import { Text, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
 
-import { Color, FontFamily, Type } from '@/theme/tokens';
+import { SpotlightCard } from '@/components/spotlight-card';
+import { Color, FontFamily, Spacing, Type } from '@/theme/tokens';
 
 export function MonoLabel({
   children,
@@ -22,22 +23,21 @@ export function MonoLabel({
 export function Card({
   children,
   style,
+  featured = false,
 }: {
   children: ReactNode;
   style?: StyleProp<ViewStyle>;
+  /** Adds the animated accent beam. Use on at most one card per screen. */
+  featured?: boolean;
 }) {
   return (
-    <View
-      className="gap-4 rounded-xl border p-4"
-      style={[
-        {
-          backgroundColor: Color.surface,
-          borderColor: Color.border,
-        },
-        style,
-      ]}>
+    <SpotlightCard
+      style={style}
+      featured={featured}
+      gap={Spacing.lg}
+      padding={Spacing.lg}>
       {children}
-    </View>
+    </SpotlightCard>
   );
 }
 

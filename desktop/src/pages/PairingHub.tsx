@@ -45,25 +45,26 @@ export const PairingHub: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* If host daemon is offline */}
-      {!agentStatus.running && (
-        <div className="p-4 rounded-xl bg-cyber-amber/10 border border-cyber-amber/30 flex items-center justify-between gap-4">
+      {/* The link service starts with the app; this only shows while it warms up. */}
+      {!agentStatus.running && !discoveryQR && (
+        <div className="flex flex-col justify-between gap-3 rounded-xl border border-cyber-amber/30 bg-cyber-amber/10 p-4 sm:flex-row sm:items-center">
           <div className="flex items-center gap-3">
-            <AlertCircle size={20} className="text-cyber-amber shrink-0" />
+            <AlertCircle size={20} className="shrink-0 text-cyber-amber" />
             <div>
-              <h4 className="text-sm font-semibold text-slate-100">Host Daemon is Currently Stopped</h4>
+              <h4 className="text-sm font-semibold text-slate-100">PC link is starting</h4>
               <p className="text-xs text-slate-400">
-                The local agent must be running to generate a dynamic pairing code and accept connections.
+                Remote Deck is bringing the local link service up. Your pairing code appears as
+                soon as it is ready.
               </p>
             </div>
           </div>
           <button
             onClick={() => startAgent()}
             disabled={isStartingAgent}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-citrus text-obsidian-950 font-bold text-xs hover:bg-citrus-hover transition-colors shadow-md disabled:opacity-50 shrink-0"
+            className="flex shrink-0 items-center gap-2 rounded-xl bg-citrus px-4 py-2 text-xs font-bold text-obsidian-950 shadow-md transition-colors hover:bg-citrus-hover disabled:opacity-50"
           >
             <Play size={14} fill="currentColor" />
-            <span>{isStartingAgent ? 'Starting...' : 'Start Daemon'}</span>
+            <span>{isStartingAgent ? 'Starting...' : 'Retry now'}</span>
           </button>
         </div>
       )}
@@ -77,7 +78,7 @@ export const PairingHub: React.FC = () => {
             action={
               <button
                 onClick={handleRegeneratePin}
-                disabled={isLoadingPairing || !agentStatus.running}
+                disabled={isLoadingPairing}
                 title="Regenerate Pairing PIN"
                 className="p-1.5 rounded-lg bg-obsidian-800 border border-obsidian-700 hover:bg-obsidian-700 text-slate-300 transition-colors disabled:opacity-40"
               >

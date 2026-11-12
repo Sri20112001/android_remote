@@ -11,6 +11,9 @@ interface AppState {
   setCurrentTab: (tab: ActiveTab) => void;
   isSidebarExpanded: boolean;
   toggleSidebar: () => void;
+  /** Slide-over navigation for windows narrower than the `lg` breakpoint. */
+  isMobileNavOpen: boolean;
+  setMobileNavOpen: (open: boolean) => void;
 
   // Agent Status
   agentStatus: AgentStatusInfo;
@@ -25,6 +28,8 @@ interface AppState {
   // Pairing & Devices
   discoveryQR: DiscoveryQRResponse | null;
   pairedDevices: PairedDevice[];
+  onlineDeviceIds: string[];
+  setDeviceOnline: (id: string, online: boolean) => void;
   isLoadingPairing: boolean;
   fetchPairingData: (forceRegenerate?: boolean) => Promise<void>;
   revokeDevice: (id: string) => Promise<boolean>;
@@ -37,6 +42,7 @@ interface AppState {
 
   // Beamed Files
   beamedFiles: BeamedFile[];
+  addBeamedFile: (file: BeamedFile) => void;
   fetchBeamedFiles: () => Promise<void>;
   openFileInExplorer: (path: string) => Promise<void>;
   openDownloadsFolder: () => Promise<void>;
@@ -47,6 +53,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   setCurrentTab: (tab) => set({ currentTab: tab }),
   isSidebarExpanded: true,
   toggleSidebar: () => set((s) => ({ isSidebarExpanded: !s.isSidebarExpanded })),
+  isMobileNavOpen: false,
+  setMobileNavOpen: (open) => set({ isMobileNavOpen: open }),
 
   agentStatus: {
     running: false,
@@ -86,7 +94,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         id: Math.random().toString(),
         timestamp: new Date().toLocaleTimeString(),
         category: 'system',
-        message: 'Host daemon started',
+        message: 'PC link service started',
         detail: res,
       });
       return res;
@@ -105,7 +113,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         id: Math.random().toString(),
         timestamp: new Date().toLocaleTimeString(),
         category: 'system',
-        message: 'Host daemon stopped',
+        message: 'PC link service stopped',
         detail: res,
       });
       return res;
@@ -124,7 +132,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         id: Math.random().toString(),
         timestamp: new Date().toLocaleTimeString(),
         category: 'system',
-        message: 'Host daemon restarted',
+        message: 'PC link service restarted',
         detail: res,
       });
       return res;
@@ -135,6 +143,16 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   discoveryQR: null,
   pairedDevices: [],
+  onlineDeviceIds: [],
+  setDeviceOnline: (id: string, online: boolean) =>
+    set((state) => ({
+      onlineDeviceIds: online
+        ? Array.from(new Set([...state.onlineDeviceIds, id]))
+        : state.onlineDeviceIds.filter((dId) => dId !== id),
+      pairedDevices: state.pairedDevices.map((d) =>
+        d.id === id ? { ...d, is_online: online } : d
+      ),
+    })),
   isLoadingPairing: false,
 
   fetchPairingData: async (forceRegenerate = false) => {
@@ -142,7 +160,22 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!forceRegenerate && get().discoveryQR?.pin) {
       try {
         const devices = await agentApi.getPairedDevices();
-        set({ pairedDevices: devices });
+        const currentOnline = new Set(get().onlineDeviceIds);
+        // On app startup, determine online state based on recent last_seen_at or active stream
+        const now = Date.now();
+        const enriched = devices.map((d) => {
+          let isOnline = currentOnline.has(d.id);
+          if (d.last_seen_at) {
+            const seenTime = new Date(d.last_seen_at).getTime();
+            // If seen within last 2 minutes
+            if (!isNaN(seenTime) && now - seenTime < 120_000) {
+              isOnline = true;
+              currentOnline.add(d.id);
+            }
+          }
+          return { ...d, is_online: isOnline };
+        });
+        set({ pairedDevices: enriched, onlineDeviceIds: Array.from(currentOnline) });
       } catch (err) {
         console.warn('Failed to refresh paired devices:', err);
       }
@@ -151,16 +184,30 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     set({ isLoadingPairing: true });
     try {
-      // Direct Native Rust Invoke: auto-starts daemon if stopped & gets QR JSON
+      // Direct Native Rust Invoke: auto-starts the link service if stopped & gets QR JSON
       const res = await invoke<{ pin: string; qr_payload: string }>('get_pairing_session');
       const devices = await agentApi.getPairedDevices();
+      const currentOnline = new Set(get().onlineDeviceIds);
+      const now = Date.now();
+      const enriched = devices.map((d) => {
+        let isOnline = currentOnline.has(d.id);
+        if (d.last_seen_at) {
+          const seenTime = new Date(d.last_seen_at).getTime();
+          if (!isNaN(seenTime) && now - seenTime < 120_000) {
+            isOnline = true;
+            currentOnline.add(d.id);
+          }
+        }
+        return { ...d, is_online: isOnline };
+      });
       set({
         discoveryQR: {
           pin: res.pin,
           qr_payload: res.qr_payload,
           expires_in_seconds: 300,
         },
-        pairedDevices: devices,
+        pairedDevices: enriched,
+        onlineDeviceIds: Array.from(currentOnline),
       });
       get().refreshAgentStatus();
     } catch (e) {
@@ -187,7 +234,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         id: Math.random().toString(),
         timestamp: new Date().toLocaleTimeString(),
         category: 'auth',
-        message: `Device revoked: ${id}`,
+        message: `Device revoked`,
+        detail: `Device removed from authorized list`,
       });
     }
     return success;
@@ -195,13 +243,35 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   activities: [],
   addActivity: (event) =>
-    set((state) => ({
-      activities: [event, ...state.activities.slice(0, 49)],
-    })),
+    set((state) => {
+      // When a remote input / command event arrives from a mobile phone, mark the phone as active online!
+      let updatedDevices = state.pairedDevices;
+      let updatedOnline = state.onlineDeviceIds;
+      if (['input', 'volume', 'macro', 'power'].includes(event.category) && state.pairedDevices.length > 0) {
+        const primaryId = state.pairedDevices[0].id;
+        if (!state.onlineDeviceIds.includes(primaryId)) {
+          updatedOnline = [...state.onlineDeviceIds, primaryId];
+        }
+        updatedDevices = state.pairedDevices.map((d, idx) =>
+          idx === 0
+            ? { ...d, is_online: true, last_seen_at: new Date().toISOString() }
+            : d
+        );
+      }
+      return {
+        activities: [event, ...state.activities.slice(0, 49)],
+        pairedDevices: updatedDevices,
+        onlineDeviceIds: updatedOnline,
+      };
+    }),
   clearActivities: () => set({ activities: [] }),
   isWsConnected: false,
 
   beamedFiles: [],
+  addBeamedFile: (file) =>
+    set((state) => ({
+      beamedFiles: [file, ...state.beamedFiles.filter((f) => f.path !== file.path)],
+    })),
   fetchBeamedFiles: async () => {
     try {
       const files = await invoke<BeamedFile[]>('get_beamed_files');

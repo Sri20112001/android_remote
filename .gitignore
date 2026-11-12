@@ -26,6 +26,11 @@ node_modules/
 dist/
 .expo/
 
+# Local env files (machine-specific; `.env.example` stays tracked)
+.env
+.env.local
+.env.*.local
+
 # Rust / Tauri
 target/
 src-tauri/target/

@@ -1,6 +1,23 @@
 import { AgentHealthResponse, DiscoveryQRResponse, PairedDevice, SystemMetrics } from '../types';
 
-const AGENT_BASE_URL = 'http://127.0.0.1:8765/api/v1';
+/**
+ * Base origin of the local agent. Configured through `VITE_AGENT_BASE_URL`
+ * (see `.env.example`), with loopback as the default.
+ */
+const AGENT_ORIGIN = (import.meta.env.VITE_AGENT_BASE_URL || 'http://127.0.0.1:8765').replace(
+  /\/+$/,
+  ''
+);
+
+/**
+ * Dev builds (including plain-browser previews) go through the Vite proxy in
+ * `vite.config.ts`: the agent's CSRF guard rejects cross-site browser fetches,
+ * so a direct loopback call would fail outside the Tauri webview. Production
+ * builds keep the direct loopback URL.
+ */
+const AGENT_BASE_URL = import.meta.env.DEV
+  ? '/agent-api/api/v1'
+  : `${AGENT_ORIGIN}/api/v1`;
 
 export const agentApi = {
   async getHealth(): Promise<AgentHealthResponse | null> {
@@ -93,6 +110,16 @@ export const agentApi = {
       return res.ok;
     } catch {
       return false;
+    }
+  },
+
+  async getDiscoveryInfo(): Promise<{ addresses?: string[]; port?: number; hostname?: string } | null> {
+    try {
+      const res = await fetch(`${AGENT_BASE_URL}/discovery/info`, { signal: AbortSignal.timeout(1500) });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      return null;
     }
   },
 

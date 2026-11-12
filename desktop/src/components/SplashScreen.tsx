@@ -28,7 +28,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
   }, [onFinish]);
 
   const checks = [
-    { label: 'HOST DAEMON ENGINE', icon: Cpu, done: stage >= 1 },
+    { label: 'LOCAL LINK SERVICE', icon: Cpu, done: stage >= 1 },
     { label: 'WIN32 INPUT CONTROLLER', icon: Terminal, done: stage >= 2 },
     { label: 'LAN DISCOVERY SUBSYSTEM', icon: Radio, done: stage >= 3 },
   ];

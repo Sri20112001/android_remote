@@ -16,22 +16,22 @@ module.exports = {
     extend: {
       colors: {
         // Surfaces
-        bg: '#101319',
-        surface: '#171B23',
-        'surface-high': '#1D222C',
-        border: '#2E3542',
-        'border-strong': '#3D4552',
+        bg: '#11100F',
+        surface: '#1C1916',
+        'surface-high': '#292522',
+        border: '#443A32',
+        'border-strong': '#5B4B3D',
         // Content
-        text: '#E1E2EB',
-        'text-dim': '#9AA3B5',
-        'text-faint': '#7E8699',
+        text: '#E9E1D7',
+        'text-dim': '#A99B8C',
+        'text-faint': '#81766B',
         // Accents
-        accent: '#CAF300',
-        'accent-pressed': '#B3DA00',
-        'on-accent': '#101319',
-        danger: '#FF5C5C',
-        'danger-pressed': '#E14E4E',
-        warn: '#FFC53D',
+        accent: '#B78350',
+        'accent-pressed': '#986C43',
+        'on-accent': '#11100F',
+        danger: '#E06455',
+        'danger-pressed': '#C74F42',
+        warn: '#D6B88C',
       },
       fontFamily: {
         // Registered by `useFonts` in src/app/_layout.tsx.

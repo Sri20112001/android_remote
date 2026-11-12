@@ -24,23 +24,45 @@ export const FontFamily = {
  * Semantic colors. Contrast against `bg` (checked):
  * text 14:1, textDim 7:1, textFaint 4.8:1, accent 11:1, danger 7:1.
  */
+
 export const Color = {
-  bg: '#101319',
-  surface: '#171B23',
-  surfaceHigh: '#1D222C',
-  border: '#2E3542',
-  borderStrong: '#3D4552',
-  text: '#E1E2EB',
-  textDim: '#9AA3B5',
-  textFaint: '#7E8699',
-  accent: '#CAF300',
-  accentPressed: '#B3DA00',
-  onAccent: '#101319',
-  danger: '#FF5C5C',
-  dangerPressed: '#E14E4E',
-  warn: '#FFC53D',
-  scrim: 'rgba(16, 19, 25, 0.82)',
+  // Backgrounds
+  bg: '#11100F',
+  surface: '#1C1916',
+  surfaceHigh: '#292522',
+
+  // Borders
+  border: '#443A32',
+  borderStrong: '#5B4B3D',
+
+  // Text
+  text: '#E9E1D7',
+  textDim: '#A99B8C',
+  textFaint: '#81766B',
+
+  // Accent
+  accent: '#B78350',
+  accentPressed: '#986C43',
+  onAccent: '#11100F',
+
+  // Status
+  danger: '#E06455',
+  dangerPressed: '#C74F42',
+  warn: '#D6B88C',
+
+  // Overlays
+  scrim: 'rgba(17, 16, 15, 0.84)',
+
+  /** Translucent obsidian glass surface. */
+  glass: 'rgba(28, 25, 22, 0.94)',
+
+  /** Subtle metallic glass border. */
+  hairline: 'rgba(214, 184, 140, 0.09)',
+
+  /** Brighter bronze corner reticles. */
+  hairlineStrong: 'rgba(214, 184, 140, 0.24)',
 } as const;
+
 
 /** 4/8dp spacing rhythm. */
 export const Spacing = {

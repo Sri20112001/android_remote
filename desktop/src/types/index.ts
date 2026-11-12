@@ -18,7 +18,13 @@ export interface PairedDevice {
   id: string;
   name: string;
   paired_at: string;
+  last_seen_at?: string;
   last_used?: string;
+  platform?: string;
+  model?: string;
+  os_version?: string;
+  status?: string;
+  is_online?: boolean;
   ip?: string;
 }
 
@@ -44,6 +50,28 @@ export interface BeamedFile {
 }
 
 export interface SystemMetrics {
+  cpu?: {
+    usage_percent: number;
+  };
+  memory?: {
+    total_bytes: number;
+    available_bytes: number;
+    used_bytes: number;
+    usage_percent: number;
+  };
+  battery?: {
+    present: boolean;
+    charging: boolean;
+    percentage: number;
+    life_time_seconds?: number;
+  };
+  disks?: {
+    mount: string;
+    total_bytes: number;
+    free_bytes: number;
+    used_bytes: number;
+    usage_percent: number;
+  }[];
   cpu_percent?: number;
   memory_used_percent?: number;
   memory_used_mb?: number;

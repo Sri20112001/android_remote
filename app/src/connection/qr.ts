@@ -23,12 +23,22 @@ export function parseQrData(data: string): QrParseResult {
     return { kind: 'error', reason: 'Empty QR code.' };
   }
 
+  // Expo's dev-server QR is the code most often on a developer's screen; say
+  // so explicitly instead of failing with the generic "not a payload" text.
+  if (/^exps?:\/\//i.test(trimmed)) {
+    return {
+      kind: 'error',
+      reason:
+        'That is the Expo dev-server QR code, not a pairing code. Scan the QR shown by the agent.',
+    };
+  }
+
   if (trimmed.startsWith('{')) {
     let parsed: unknown;
     try {
       parsed = JSON.parse(trimmed);
     } catch {
-      return { kind: 'error', reason: 'QR code is not a valid Remote Deck payload.' };
+      return { kind: 'error', reason: 'QR code is not a valid TUF Remote payload.' };
     }
     const checked = validatePayload(parsed);
     if ('reason' in checked) {
@@ -50,7 +60,12 @@ export function parseQrData(data: string): QrParseResult {
   if (asAddress.ok) {
     return { kind: 'origin', origin: asAddress.origin };
   }
-  return { kind: 'error', reason: 'QR code is not a Remote Deck address or payload.' };
+  // Surface *why* the address was refused: "must not contain a path" and
+  // "not a valid address" mean very different things to whoever is scanning.
+  return {
+    kind: 'error',
+    reason: `QR code is not a TUF Remote address or payload. ${asAddress.reason}`,
+  };
 }
 
 type PayloadCheck = QrPayload | { reason: string };
@@ -66,9 +81,17 @@ function validatePayload(value: unknown): PayloadCheck {
     return { reason: 'QR payload has no valid port.' };
   }
 
-  const addresses = Array.isArray(v.ip_addresses)
-    ? v.ip_addresses.filter((a): a is string => typeof a === 'string' && a.length > 0)
-    : [];
+  // `ip_addresses` is the QR payload's own field; `addresses` is what
+  // `/discovery/info` returns. Accept both so a QR built from either endpoint
+  // (some tools synthesize one from the other) still works.
+  const rawAddresses = Array.isArray(v.ip_addresses)
+    ? v.ip_addresses
+    : Array.isArray(v.addresses)
+      ? v.addresses
+      : [];
+  const addresses = rawAddresses.filter(
+    (a): a is string => typeof a === 'string' && a.length > 0,
+  );
   const hostname = typeof v.hostname === 'string' ? v.hostname : '';
   if (addresses.length === 0 && hostname === '') {
     return { reason: 'QR payload has no address.' };
@@ -80,7 +103,8 @@ function validatePayload(value: unknown): PayloadCheck {
     hostname,
     ip_addresses: addresses,
     port,
-    tls_enabled: v.tls_enabled === true,
+    // Some payload generators use `tls` for the same flag.
+    tls_enabled: v.tls_enabled === true || v.tls === true,
     session_id: typeof v.session_id === 'string' ? v.session_id : undefined,
     pin: typeof v.pin === 'string' ? v.pin : undefined,
   };

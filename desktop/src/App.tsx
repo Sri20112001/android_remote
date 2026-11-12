@@ -36,7 +36,7 @@ export function App() {
   }, [refreshAgentStatus, fetchPairingData, addActivity]);
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-obsidian-950 text-slate-100 overflow-hidden select-none border border-obsidian-800 rounded-lg">
+    <div className="flex h-screen w-screen flex-col overflow-hidden border border-obsidian-800 bg-obsidian-950 text-slate-100 select-none">
       {/* App Splash Screen on Launch */}
       {showSplash && <SplashScreen onFinish={() => setShowSplash(false)} />}
 
@@ -44,13 +44,11 @@ export function App() {
       <HeaderBar />
 
       {/* Main Workspace (Responsive) */}
-      <div className="flex flex-1 overflow-hidden relative">
-        {/* Creative Responsive Sidebar */}
+      <div className="relative flex flex-1 overflow-hidden">
         <NavSidebar />
 
-        {/* Content Pane */}
-        <main className="flex-1 bg-obsidian-900 p-4 sm:p-6 overflow-y-auto">
-          <div className="max-w-6xl mx-auto">
+        <main className="relative z-10 flex-1 overflow-y-auto">
+          <div className="mx-auto w-full max-w-[1180px] px-4 py-5 sm:px-6 lg:px-8 lg:py-7">
             {currentTab === 'dashboard' && <Dashboard />}
             {currentTab === 'pairing' && <PairingHub />}
             {currentTab === 'files' && <FileInbox />}

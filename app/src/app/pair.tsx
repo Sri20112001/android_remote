@@ -150,7 +150,7 @@ export default function PairScreen() {
       </View>
 
       {/* Pairing form */}
-      <Card>
+      <Card featured>
         <Field
           label="Pairing PIN"
           value={pin}

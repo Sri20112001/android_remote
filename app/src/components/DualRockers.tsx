@@ -1,4 +1,3 @@
-import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
@@ -16,7 +15,7 @@ export function DualRockers({ onSendKey }: DualRockersProps) {
         </Text>
         <View className="bg-[#131924] rounded-xl border border-[#243048] overflow-hidden">
           <TouchableOpacity
-            className="flex-row justify-center items-center py-2.5 gap-1.5"
+            className="flex-row justify-center items-center py-6 gap-1.5"
             activeOpacity={0.7}
             onPress={() => onSendKey('volume_up')}
           >
@@ -27,7 +26,7 @@ export function DualRockers({ onSendKey }: DualRockersProps) {
           <View className="h-[1px] bg-[#1E2538]" />
 
           <TouchableOpacity
-            className="flex-row justify-center items-center py-2.5 gap-1.5"
+            className="flex-row justify-center items-center py-6 gap-1.5"
             activeOpacity={0.7}
             onPress={() => onSendKey('volume_down')}
           >
@@ -44,7 +43,7 @@ export function DualRockers({ onSendKey }: DualRockersProps) {
         </Text>
         <View className="bg-[#131924] rounded-xl border border-[#243048] overflow-hidden">
           <TouchableOpacity
-            className="flex-row justify-center items-center py-2.5 gap-1.5"
+            className="flex-row justify-center items-center py-6 gap-1.5"
             activeOpacity={0.7}
             onPress={() => onSendKey('pageup')}
           >
@@ -55,7 +54,7 @@ export function DualRockers({ onSendKey }: DualRockersProps) {
           <View className="h-[1px] bg-[#1E2538]" />
 
           <TouchableOpacity
-            className="flex-row justify-center items-center py-2.5 gap-1.5"
+            className="flex-row justify-center items-center py-6 gap-1.5"
             activeOpacity={0.7}
             onPress={() => onSendKey('pagedown')}
           >
