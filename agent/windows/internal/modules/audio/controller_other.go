@@ -29,3 +29,12 @@ func (c *OtherDeviceController) ToggleMute() (bool, error) {
 	c.muted = !c.muted
 	return c.muted, nil
 }
+
+func (c *OtherDeviceController) GetNowPlaying() (*NowPlayingInfo, error) {
+	return &NowPlayingInfo{
+		Title:   "No media playing",
+		Artist:  "",
+		Player:  "",
+		Playing: false,
+	}, nil
+}

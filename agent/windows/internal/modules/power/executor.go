@@ -7,4 +7,5 @@ type Executor interface {
 	Hibernate() error
 	Restart() error
 	Shutdown() error
+	DisplayOff() error
 }

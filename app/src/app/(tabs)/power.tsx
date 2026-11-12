@@ -28,6 +28,7 @@ export default function PowerVaultScreen() {
   const tabBarClearance = useTabBarClearance();
   const {
     lockWorkstation,
+    displayOffWorkstation,
     sleepWorkstation,
     requestRestart,
     confirmRestart,
@@ -41,6 +42,7 @@ export default function PowerVaultScreen() {
   // Animations
   const [alertPulse] = useState(() => new Animated.Value(1));
   const [lockScale] = useState(() => new Animated.Value(1));
+  const [displayOffScale] = useState(() => new Animated.Value(1));
   const [sleepScale] = useState(() => new Animated.Value(1));
   const [restartScale] = useState(() => new Animated.Value(1));
   const [shutdownScale] = useState(() => new Animated.Value(1));
@@ -103,6 +105,14 @@ export default function PowerVaultScreen() {
       lockWorkstation()
         .then(() => setStatusMessage('Workstation locked successfully.'))
         .catch((err) => Alert.alert('Lock Failed', err.message));
+    });
+  };
+
+  const handleDisplayOff = () => {
+    pressSpring(displayOffScale, () => {
+      displayOffWorkstation()
+        .then(() => setStatusMessage('Displays powered off. Wake anytime via mouse/keyboard.'))
+        .catch((err) => Alert.alert('Display Off Failed', err.message));
     });
   };
 
@@ -259,6 +269,24 @@ export default function PowerVaultScreen() {
             <View style={styles.actionDetails}>
               <Text style={styles.actionName}>Lock Workstation</Text>
               <Text style={styles.actionDesc}>Immediately secures the Windows session</Text>
+            </View>
+            <MaterialCommunityIcons name="chevron-right" size={20} color="#64748B" />
+          </TouchableOpacity>
+        </Animated.View>
+
+        {/* Turn Off Displays Tile with Spring */}
+        <Animated.View style={{ transform: [{ scale: displayOffScale }] }}>
+          <TouchableOpacity
+            style={styles.actionCard}
+            activeOpacity={0.8}
+            onPress={handleDisplayOff}
+          >
+            <View style={[styles.iconBox, { backgroundColor: '#1E293B' }]}>
+              <MaterialCommunityIcons name="monitor-off" size={24} color="#A78BFA" />
+            </View>
+            <View style={styles.actionDetails}>
+              <Text style={styles.actionName}>Turn Off Displays</Text>
+              <Text style={styles.actionDesc}>Powers down monitors while keeping PC running</Text>
             </View>
             <MaterialCommunityIcons name="chevron-right" size={20} color="#64748B" />
           </TouchableOpacity>

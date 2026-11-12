@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
@@ -165,4 +166,151 @@ func (c *WindowsDeviceController) ToggleMute() (bool, error) {
 	c.sendKey(vkVolumeMute)
 	c.cachedMuted = !c.cachedMuted
 	return c.cachedMuted, nil
+}
+
+var (
+	procEnumWindows              = user32.NewProc("EnumWindows")
+	procGetWindowTextW           = user32.NewProc("GetWindowTextW")
+	procGetWindowTextLengthW     = user32.NewProc("GetWindowTextLengthW")
+	procIsWindowVisible          = user32.NewProc("IsWindowVisible")
+	procGetWindowThreadProcessId = user32.NewProc("GetWindowThreadProcessId")
+)
+
+type mediaWindow struct {
+	title       string
+	processName string
+}
+
+func getProcessName(pid uint32) string {
+	const PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+	h, err := windows.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
+	if err != nil {
+		return ""
+	}
+	defer windows.CloseHandle(h)
+
+	var buf [windows.MAX_PATH]uint16
+	size := uint32(len(buf))
+	if err := windows.QueryFullProcessImageName(h, 0, &buf[0], &size); err == nil {
+		fullPath := windows.UTF16ToString(buf[:size])
+		parts := strings.Split(fullPath, "\\")
+		if len(parts) > 0 {
+			name := strings.ToLower(parts[len(parts)-1])
+			return strings.TrimSuffix(name, ".exe")
+		}
+	}
+	return ""
+}
+
+// GetNowPlaying inspects active desktop windows to identify current music or video playing.
+func (c *WindowsDeviceController) GetNowPlaying() (*NowPlayingInfo, error) {
+	var candidates []mediaWindow
+
+	cb := windows.NewCallback(func(hwnd windows.Handle, lparam uintptr) uintptr {
+		vis, _, _ := procIsWindowVisible.Call(uintptr(hwnd))
+		if vis == 0 {
+			return 1
+		}
+
+		length, _, _ := procGetWindowTextLengthW.Call(uintptr(hwnd))
+		if length == 0 {
+			return 1
+		}
+
+		buf := make([]uint16, length+1)
+		procGetWindowTextW.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&buf[0])), uintptr(length+1))
+		title := strings.TrimSpace(windows.UTF16ToString(buf))
+		if title == "" {
+			return 1
+		}
+
+		var pid uint32
+		procGetWindowThreadProcessId.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&pid)))
+		if pid == 0 {
+			return 1
+		}
+
+		procName := getProcessName(pid)
+		candidates = append(candidates, mediaWindow{
+			title:       title,
+			processName: procName,
+		})
+		return 1
+	})
+
+	procEnumWindows.Call(cb, 0)
+
+	// Check Spotify
+	for _, w := range candidates {
+		if strings.Contains(w.processName, "spotify") {
+			if w.title != "" && !strings.EqualFold(w.title, "Spotify") && !strings.EqualFold(w.title, "Spotify Free") && !strings.EqualFold(w.title, "Spotify Premium") {
+				parts := strings.SplitN(w.title, " - ", 2)
+				if len(parts) == 2 {
+					return &NowPlayingInfo{
+						Artist:  strings.TrimSpace(parts[0]),
+						Title:   strings.TrimSpace(parts[1]),
+						Player:  "Spotify",
+						Playing: true,
+					}, nil
+				}
+				return &NowPlayingInfo{
+					Title:   w.title,
+					Artist:  "Spotify",
+					Player:  "Spotify",
+					Playing: true,
+				}, nil
+			}
+		}
+	}
+
+	// Check VLC Media Player
+	for _, w := range candidates {
+		if strings.Contains(w.processName, "vlc") {
+			title := strings.TrimSuffix(w.title, " - VLC media player")
+			if title != "" && !strings.EqualFold(title, "VLC media player") {
+				return &NowPlayingInfo{
+					Title:   title,
+					Artist:  "VLC Media Player",
+					Player:  "VLC",
+					Playing: true,
+				}, nil
+			}
+		}
+	}
+
+	// Check Foobar2000, AIMP, Apple Music / iTunes
+	for _, w := range candidates {
+		if strings.Contains(w.processName, "foobar2000") || strings.Contains(w.processName, "aimp") || strings.Contains(w.processName, "itunes") || strings.Contains(w.processName, "applemusic") {
+			return &NowPlayingInfo{
+				Title:   w.title,
+				Artist:  w.processName,
+				Player:  w.processName,
+				Playing: true,
+			}, nil
+		}
+	}
+
+	// Check Browsers playing YouTube / SoundCloud
+	for _, w := range candidates {
+		lower := strings.ToLower(w.title)
+		if strings.Contains(lower, " - youtube") {
+			cleanTitle := strings.TrimSuffix(w.title, " - YouTube")
+			for _, suffix := range []string{" - Google Chrome", " - Microsoft Edge", " - Brave", " - Mozilla Firefox"} {
+				cleanTitle = strings.TrimSuffix(cleanTitle, suffix)
+			}
+			return &NowPlayingInfo{
+				Title:   strings.TrimSpace(cleanTitle),
+				Artist:  "YouTube",
+				Player:  w.processName,
+				Playing: true,
+			}, nil
+		}
+	}
+
+	return &NowPlayingInfo{
+		Title:   "Ready for Playback",
+		Artist:  "No active media detected",
+		Player:  "Windows Media",
+		Playing: false,
+	}, nil
 }

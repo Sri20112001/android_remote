@@ -36,6 +36,17 @@ func (ctl *Controller) Lock(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "locked"})
 }
 
+// DisplayOff handles POST /power/display-off.
+func (ctl *Controller) DisplayOff(c *gin.Context) {
+	id := middleware.IdentityFromContext(c)
+	if err := ctl.svc.DisplayOff(c.Request.Context(), id); err != nil {
+		ctl.logger.Error("power display-off failed", "error", err)
+		utils.RespondError(c, http.StatusInternalServerError, constants.CodeInternal, "failed to turn off workstation display")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "display_off"})
+}
+
 // Request handles POST /power/request.
 func (ctl *Controller) Request(c *gin.Context) {
 	id := middleware.IdentityFromContext(c)

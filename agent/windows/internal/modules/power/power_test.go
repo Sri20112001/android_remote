@@ -50,6 +50,10 @@ func (f *fakePowerExecutor) Shutdown() error {
 	return nil
 }
 
+func (f *fakePowerExecutor) DisplayOff() error {
+	return nil
+}
+
 type fakeTokenValidator struct{}
 
 func (f *fakeTokenValidator) ValidateToken(ctx context.Context, token string) (middleware.Identity, error) {

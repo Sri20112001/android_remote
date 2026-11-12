@@ -51,10 +51,23 @@ func (s *Service) ToggleMute() (bool, error) {
 	return s.ctrl.ToggleMute()
 }
 
+// GetNowPlaying queries active media metadata from desktop media players.
+func (s *Service) GetNowPlaying() (*NowPlayingInfo, error) {
+	return s.ctrl.GetNowPlaying()
+}
+
 // RegisterWS registers audio commands with the WebSocket registry.
 func (s *Service) RegisterWS(registry *ws.Registry) {
 	registry.Register("audio", "get_volume", func(ctx context.Context, id middleware.Identity, payload json.RawMessage) (any, error) {
 		return s.GetStatus()
+	})
+
+	registry.Register("audio", "now_playing", func(ctx context.Context, id middleware.Identity, payload json.RawMessage) (any, error) {
+		info, err := s.GetNowPlaying()
+		if err != nil {
+			return nil, ws.NewCommandError(constants.CodeInternal, err.Error())
+		}
+		return info, nil
 	})
 
 	registry.Register("audio", "set_volume", func(ctx context.Context, id middleware.Identity, payload json.RawMessage) (any, error) {

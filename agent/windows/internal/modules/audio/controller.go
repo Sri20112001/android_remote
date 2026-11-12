@@ -35,6 +35,17 @@ func (ctl *Controller) GetVolume(c *gin.Context) {
 	c.JSON(http.StatusOK, status)
 }
 
+// GetNowPlaying handles GET /audio/now-playing.
+func (ctl *Controller) GetNowPlaying(c *gin.Context) {
+	info, err := ctl.svc.GetNowPlaying()
+	if err != nil {
+		ctl.logger.Error("failed to get now playing media", "error", err)
+		utils.RespondError(c, http.StatusInternalServerError, constants.CodeInternal, "failed to get now playing media")
+		return
+	}
+	c.JSON(http.StatusOK, info)
+}
+
 // SetVolume handles PUT /audio/volume.
 func (ctl *Controller) SetVolume(c *gin.Context) {
 	var req SetVolumePayload

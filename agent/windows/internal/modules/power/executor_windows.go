@@ -15,6 +15,7 @@ var (
 
 	procLockWorkStation = user32DLL.NewProc("LockWorkStation")
 	procSetSuspendState = powrprofDLL.NewProc("SetSuspendState")
+	procSendMessage     = user32DLL.NewProc("SendMessageW")
 )
 
 // WindowsExecutor implements Executor via Win32 calls.
@@ -23,6 +24,17 @@ type WindowsExecutor struct{}
 // NewExecutor returns the Windows power executor.
 func NewExecutor() *WindowsExecutor {
 	return &WindowsExecutor{}
+}
+
+func (e *WindowsExecutor) DisplayOff() error {
+	// HWND_BROADCAST = 0xffff, WM_SYSCOMMAND = 0x0112, SC_MONITORPOWER = 0xF170, 2 = turn off
+	r, _, err := procSendMessage.Call(0xffff, 0x0112, 0xF170, 2)
+	if r == 0 && err != windows.ERROR_SUCCESS {
+		// Fallback via PowerShell
+		cmd := exec.Command("powershell", "-NoProfile", "-Command", "(Add-Type '[DllImport(\"user32.dll\")]public static extern int SendMessage(int hWnd,int hMsg,int wParam,int lParam);' -Name a -PassThru)::SendMessage(0xffff,0x0112,0xF170,2)")
+		_ = cmd.Run()
+	}
+	return nil
 }
 
 func (e *WindowsExecutor) Lock() error {

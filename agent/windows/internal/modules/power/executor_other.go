@@ -8,8 +8,9 @@ func NewExecutor() *OtherExecutor {
 	return &OtherExecutor{}
 }
 
-func (e *OtherExecutor) Lock() error      { return nil }
-func (e *OtherExecutor) Sleep() error     { return nil }
-func (e *OtherExecutor) Hibernate() error { return nil }
-func (e *OtherExecutor) Restart() error   { return nil }
-func (e *OtherExecutor) Shutdown() error  { return nil }
+func (e *OtherExecutor) Lock() error       { return nil }
+func (e *OtherExecutor) Sleep() error      { return nil }
+func (e *OtherExecutor) Hibernate() error  { return nil }
+func (e *OtherExecutor) Restart() error    { return nil }
+func (e *OtherExecutor) Shutdown() error   { return nil }
+func (e *OtherExecutor) DisplayOff() error { return nil }

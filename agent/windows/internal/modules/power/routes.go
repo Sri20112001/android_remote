@@ -14,6 +14,7 @@ func RegisterRoutes(rg gin.IRoutes, ctl *Controller, validator middleware.TokenV
 	auth := middleware.RequireAuth(validator, logger)
 
 	rg.POST(constants.RoutePowerLock, auth, ctl.Lock)
+	rg.POST(constants.RoutePowerDisplayOff, auth, ctl.DisplayOff)
 	rg.POST(constants.RoutePowerRequest, auth, ctl.Request)
 	rg.POST(constants.RoutePowerConfirm, auth, ctl.Confirm)
 }

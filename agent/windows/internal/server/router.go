@@ -45,11 +45,13 @@ type RouterDependencies struct {
 	}
 	PowerController interface {
 		Lock(*gin.Context)
+		DisplayOff(*gin.Context)
 		Request(*gin.Context)
 		Confirm(*gin.Context)
 	}
 	AudioController interface {
 		GetVolume(*gin.Context)
+		GetNowPlaying(*gin.Context)
 		SetVolume(*gin.Context)
 		SetMute(*gin.Context)
 	}
@@ -119,11 +121,13 @@ func NewRouter(deps RouterDependencies) *gin.Engine {
 		}
 		if deps.PowerController != nil {
 			api.POST(constants.RoutePowerLock, auth, deps.PowerController.Lock)
+			api.POST(constants.RoutePowerDisplayOff, auth, deps.PowerController.DisplayOff)
 			api.POST(constants.RoutePowerRequest, auth, deps.PowerController.Request)
 			api.POST(constants.RoutePowerConfirm, auth, deps.PowerController.Confirm)
 		}
 		if deps.AudioController != nil {
 			api.GET(constants.RouteAudioVolume, auth, deps.AudioController.GetVolume)
+			api.GET(constants.RouteAudioNowPlaying, auth, deps.AudioController.GetNowPlaying)
 			api.PUT(constants.RouteAudioVolume, auth, deps.AudioController.SetVolume)
 			api.POST(constants.RouteAudioMute, auth, deps.AudioController.SetMute)
 		}

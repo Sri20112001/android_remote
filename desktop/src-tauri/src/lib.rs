@@ -53,9 +53,16 @@ pub fn run() {
             let show_i = MenuItem::with_id(app, "show", "Show Control Center", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
 
-            let _tray = TrayIconBuilder::new()
+            let icon = app.default_window_icon().cloned();
+            let mut tray_builder = TrayIconBuilder::new()
                 .menu(&menu)
-                .tooltip("Remote Deck Control Center")
+                .tooltip("Remote Deck Control Center");
+
+            if let Some(i) = icon {
+                tray_builder = tray_builder.icon(i);
+            }
+
+            let _tray = tray_builder
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "quit" => {
                         app.exit(0);

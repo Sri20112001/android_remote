@@ -14,6 +14,7 @@ func RegisterRoutes(rg gin.IRoutes, ctl *Controller, validator middleware.TokenV
 	auth := middleware.RequireAuth(validator, logger)
 
 	rg.GET(constants.RouteAudioVolume, auth, ctl.GetVolume)
+	rg.GET(constants.RouteAudioNowPlaying, auth, ctl.GetNowPlaying)
 	rg.PUT(constants.RouteAudioVolume, auth, ctl.SetVolume)
 	rg.POST(constants.RouteAudioMute, auth, ctl.SetMute)
 }

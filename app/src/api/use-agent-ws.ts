@@ -72,6 +72,13 @@ interface PowerConfirmResponse {
   status: string;
 }
 
+export interface NowPlayingInfo {
+  title: string;
+  artist: string;
+  player: string;
+  playing: boolean;
+}
+
 /** Whole seconds left on an RFC 3339 expiry; the agent's window is 30 s. */
 function secondsUntil(expiresAt: string): number {
   const remaining = Date.parse(expiresAt) - Date.now();
@@ -207,6 +214,11 @@ export function useAgentWS() {
     return client.sendCommand<{ level: number; muted: boolean }>('audio', 'get_volume');
   }, [client]);
 
+  const getNowPlaying = useCallback(() => {
+    if (!client) return Promise.reject(new Error('Offline'));
+    return client.sendCommand<NowPlayingInfo>('audio', 'now_playing');
+  }, [client]);
+
   const getMetrics = useCallback(() => {
     if (!client) return Promise.reject(new Error('Offline'));
     return client.sendCommand('monitoring', 'metrics');
@@ -239,6 +251,11 @@ export function useAgentWS() {
   const lockWorkstation = useCallback(() => {
     if (!client) return Promise.reject(new Error('Offline'));
     return client.sendCommand('power', 'lock');
+  }, [client]);
+
+  const displayOffWorkstation = useCallback(() => {
+    if (!client) return Promise.reject(new Error('Offline'));
+    return client.sendCommand('power', 'display_off');
   }, [client]);
 
   /**
@@ -356,9 +373,11 @@ export function useAgentWS() {
     setVolume,
     toggleMute,
     getAudioStatus,
+    getNowPlaying,
     getMetrics,
     onMetrics,
     lockWorkstation,
+    displayOffWorkstation,
     sleepWorkstation,
     requestRestart,
     confirmRestart,

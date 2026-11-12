@@ -37,6 +37,8 @@ const (
 
 	// RoutePowerLock locks the workstation immediately.
 	RoutePowerLock = "/power/lock"
+	// RoutePowerDisplayOff turns off the connected monitors immediately.
+	RoutePowerDisplayOff = "/power/display-off"
 	// RoutePowerRequest requests a confirmation token for power actions.
 	RoutePowerRequest = "/power/request"
 	// RoutePowerConfirm executes confirmed power actions with a valid confirmation token.
@@ -46,6 +48,8 @@ const (
 	RouteAudioVolume = "/audio/volume"
 	// RouteAudioMute gets or sets master audio mute state.
 	RouteAudioMute = "/audio/mute"
+	// RouteAudioNowPlaying gets active media player track metadata.
+	RouteAudioNowPlaying = "/audio/now-playing"
 
 	// RouteInputMouse injects mouse motion, clicks or scrolling.
 	RouteInputMouse = "/input/mouse"

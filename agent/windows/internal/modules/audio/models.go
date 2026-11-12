@@ -15,3 +15,11 @@ type SetVolumePayload struct {
 type SetMutePayload struct {
 	Muted bool `json:"muted"`
 }
+
+// NowPlayingInfo represents active media title, artist and source application.
+type NowPlayingInfo struct {
+	Title   string `json:"title"`
+	Artist  string `json:"artist"`
+	Player  string `json:"player"`
+	Playing bool   `json:"playing"`
+}

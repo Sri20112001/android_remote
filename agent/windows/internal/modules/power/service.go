@@ -70,6 +70,35 @@ func (s *Service) Lock(ctx context.Context, id middleware.Identity) error {
 	return err
 }
 
+// DisplayOff immediately turns off the workstation displays without suspending the PC.
+func (s *Service) DisplayOff(ctx context.Context, id middleware.Identity) error {
+	err := s.executor.DisplayOff()
+	actorType := "device"
+	if id.Local {
+		actorType = "local"
+	}
+
+	outcome := "success"
+	detail := "workstation display turned off"
+	if err != nil {
+		outcome = "failure"
+		detail = err.Error()
+	}
+
+	if s.auditLogger != nil {
+		_ = s.auditLogger.Record(ctx, audit.Entry{
+			ActorType: actorType,
+			ActorID:   id.DeviceID,
+			Action:    "power.display_off",
+			Resource:  "workstation_display",
+			Outcome:   outcome,
+			Detail:    detail,
+		})
+	}
+
+	return err
+}
+
 // RequestConfirmation initiates a confirmation window for a destructive power action.
 func (s *Service) RequestConfirmation(ctx context.Context, id middleware.Identity, action string) (*RequestResponse, error) {
 	switch action {
@@ -170,6 +199,13 @@ func (s *Service) RegisterWS(registry *ws.Registry) {
 			return nil, ws.NewCommandError(constants.CodeInternal, err.Error())
 		}
 		return map[string]string{"status": "locked"}, nil
+	})
+
+	registry.Register("power", "display_off", func(ctx context.Context, id middleware.Identity, payload json.RawMessage) (any, error) {
+		if err := s.DisplayOff(ctx, id); err != nil {
+			return nil, ws.NewCommandError(constants.CodeInternal, err.Error())
+		}
+		return map[string]string{"status": "display_off"}, nil
 	})
 
 	registry.Register("power", "request", func(ctx context.Context, id middleware.Identity, payload json.RawMessage) (any, error) {

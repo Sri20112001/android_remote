@@ -42,6 +42,15 @@ func (f *fakeAudioController) ToggleMute() (bool, error) {
 	return f.muted, nil
 }
 
+func (f *fakeAudioController) GetNowPlaying() (*audio.NowPlayingInfo, error) {
+	return &audio.NowPlayingInfo{
+		Title:   "Test Song",
+		Artist:  "Test Artist",
+		Player:  "Spotify",
+		Playing: true,
+	}, nil
+}
+
 type fakeTokenValidator struct{}
 
 func (f *fakeTokenValidator) ValidateToken(ctx context.Context, token string) (middleware.Identity, error) {

@@ -27,40 +27,40 @@ export const FontFamily = {
 
 export const Color = {
   // Backgrounds
-  bg: '#11100F',
-  surface: '#1C1916',
-  surfaceHigh: '#292522',
+  bg: '#0D0E10',
+  surface: '#17191D',
+  surfaceHigh: '#22252A',
 
   // Borders
-  border: '#443A32',
-  borderStrong: '#5B4B3D',
+  border: '#34383F',
+  borderStrong: '#4A5059',
 
   // Text
-  text: '#E9E1D7',
-  textDim: '#A99B8C',
-  textFaint: '#81766B',
+  text: '#F0F1F3',
+  textDim: '#A5A9B0',
+  textFaint: '#747A84',
 
   // Accent
-  accent: '#B78350',
-  accentPressed: '#986C43',
-  onAccent: '#11100F',
+  accent: '#A8B4C4',
+  accentPressed: '#8795A8',
+  onAccent: '#0D0E10',
 
   // Status
-  danger: '#E06455',
-  dangerPressed: '#C74F42',
-  warn: '#D6B88C',
+  danger: '#E06464',
+  dangerPressed: '#C74C4C',
+  warn: '#E0BE78',
 
   // Overlays
-  scrim: 'rgba(17, 16, 15, 0.84)',
+  scrim: 'rgba(13, 14, 16, 0.84)',
 
   /** Translucent obsidian glass surface. */
-  glass: 'rgba(28, 25, 22, 0.94)',
+  glass: 'rgba(23, 25, 29, 0.94)',
 
   /** Subtle metallic glass border. */
-  hairline: 'rgba(214, 184, 140, 0.09)',
+  hairline: 'rgba(190, 200, 215, 0.09)',
 
-  /** Brighter bronze corner reticles. */
-  hairlineStrong: 'rgba(214, 184, 140, 0.24)',
+  /** Brighter silver corner reticles. */
+  hairlineStrong: 'rgba(190, 200, 215, 0.24)',
 } as const;
 
 

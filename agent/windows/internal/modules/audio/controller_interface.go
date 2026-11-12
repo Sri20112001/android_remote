@@ -6,4 +6,5 @@ type DeviceController interface {
 	SetVolume(level int) error
 	SetMute(muted bool) error
 	ToggleMute() (bool, error)
+	GetNowPlaying() (*NowPlayingInfo, error)
 }

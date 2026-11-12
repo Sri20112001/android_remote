@@ -40,6 +40,7 @@ const latest: {
   sendMouseClick: (button?: 'left' | 'right' | 'middle', double?: boolean) => void;
   sendMouseDown: (button?: 'left' | 'right' | 'middle') => void;
   sendMouseUp: (button?: 'left' | 'right' | 'middle') => void;
+  sendKeyTap: (key: string, modifiers?: string[]) => void;
 } = {
   sensitivity: 1.0,
   sendMouseMove: () => {},
@@ -47,6 +48,7 @@ const latest: {
   sendMouseClick: () => {},
   sendMouseDown: () => {},
   sendMouseUp: () => {},
+  sendKeyTap: () => {},
 };
 
 /**
@@ -87,6 +89,10 @@ type PadGesture = {
   dragging: boolean;
   /** Sub-notch wheel travel carried over to the next gesture. */
   scrollRemainder: number;
+  /** Multi-touch pinch-to-zoom tracking */
+  initialPinchDist: number;
+  lastPinchDist: number;
+  isPinching: boolean;
 };
 
 /**
@@ -162,6 +168,7 @@ export default function TrackpadScreen() {
     sendMouseScroll,
     sendMouseDown,
     sendMouseUp,
+    sendKeyTap,
     getClipboard,
     setClipboard,
   } = useAgentWS();
@@ -246,6 +253,9 @@ export default function TrackpadScreen() {
     // Sub-notch wheel travel, carried between gestures so slow scrolling
     // eventually adds up to a whole 120-unit notch instead of being dropped.
     scrollRemainder: 0,
+    initialPinchDist: 0,
+    lastPinchDist: 0,
+    isPinching: false,
   }));
 
   // Point the responders at the current sensitivity and client. The effect
@@ -258,6 +268,7 @@ export default function TrackpadScreen() {
     latest.sendMouseClick = sendMouseClick;
     latest.sendMouseDown = sendMouseDown;
     latest.sendMouseUp = sendMouseUp;
+    latest.sendKeyTap = sendKeyTap;
   }, [
     sensitivity,
     sendMouseMove,
@@ -265,6 +276,7 @@ export default function TrackpadScreen() {
     sendMouseClick,
     sendMouseDown,
     sendMouseUp,
+    sendKeyTap,
   ]);
 
   // Gyroscopic Air Mouse Engine
@@ -343,6 +355,9 @@ export default function TrackpadScreen() {
         gesture.accumY = 0;
         gesture.touchStartTime = Date.now();
         gesture.touchMoved = false;
+        gesture.initialPinchDist = 0;
+        gesture.lastPinchDist = 0;
+        gesture.isPinching = false;
         // Hold still to arm a drag; a tap or a glide cancels it before it fires.
         armHoldDrag(gesture, () => {
           setIsDragging(true);
@@ -390,8 +405,39 @@ export default function TrackpadScreen() {
         gesture.accumX -= stepX;
         gesture.accumY -= stepY;
 
-        // Two-finger scroll: notched up to whole Windows wheel units with momentum velocity tracking.
+        // Two-finger handling: Pinch-to-zoom OR Two-finger scroll
         if (touches.length === 2) {
+          const t0 = touches[0];
+          const t1 = touches[1];
+          const currentDist = Math.hypot(t0.pageX - t1.pageX, t0.pageY - t1.pageY);
+
+          if (gesture.initialPinchDist === 0) {
+            gesture.initialPinchDist = currentDist;
+            gesture.lastPinchDist = currentDist;
+          }
+
+          const pinchDistDelta = currentDist - gesture.lastPinchDist;
+          const totalPinchTravel = Math.abs(currentDist - gesture.initialPinchDist);
+
+          // If distance between fingers changes by more than 16px, engage pinch-zoom
+          if (totalPinchTravel > 16 || gesture.isPinching) {
+            gesture.isPinching = true;
+            if (Math.abs(pinchDistDelta) > 10) {
+              gesture.lastPinchDist = currentDist;
+              if (pinchDistDelta > 0) {
+                // Pinch Out: Zoom In (Ctrl + =)
+                latest.sendKeyTap('=', ['ctrl']);
+                triggerHaptic.selection();
+              } else {
+                // Pinch In: Zoom Out (Ctrl + -)
+                latest.sendKeyTap('-', ['ctrl']);
+                triggerHaptic.selection();
+              }
+            }
+            return;
+          }
+
+          // Otherwise, parallel two-finger movement = vertical scroll
           const scrollStep = (-stepY * WHEEL_UNITS_PER_PX) / POINTER_GAIN;
           gesture.scrollVelocity = scrollStep;
           queueScroll(gesture, scrollStep);
@@ -431,6 +477,7 @@ export default function TrackpadScreen() {
         }
 
         if (endDrag(gesture, () => setIsDragging(false))) return;
+        if (gesture.isPinching) return;
 
         const elapsed = Date.now() - gesture.touchStartTime;
         if (!gesture.touchMoved && elapsed < 280) {
